@@ -4,9 +4,7 @@
 
 ## 信息优先级
 
-1. 代码实际行为 > 2. `AGENTS.md` > 3. `README.md` > 4. `ROADMAP.md` > 5. `CLAUDE.md`
-
-`ROADMAP.md` 代表演进方向，不代表已交付。
+1. 代码实际行为 > 2. `AGENTS.md` > 3. `README.md` > 4. `CLAUDE.md`
 
 ## 项目快照
 
@@ -197,7 +195,7 @@ clients/
 
 ### 1. 改行为 → 同步文档
 
-`AGENTS.md` / `README.md` / `ROADMAP.md`（仅状态变化时）
+`AGENTS.md` / `README.md`（仅状态变化时）
 
 ### 2. 改命令入口 → 联动
 
@@ -261,9 +259,7 @@ clients/
 
 ## 当前已知边界
 
-以下在路线图但未交付：容器/VM 沙箱 / MCP OAuth + sampling + server 自动重启
-
-不要把 `ROADMAP.md` 中"将来要做"误读成"现在已有"。
+当前未交付：容器/VM 沙箱 / MCP OAuth + sampling + server 自动重启
 
 ## 持续维护约定
 
