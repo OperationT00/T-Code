@@ -85,6 +85,39 @@ class CliCommandParserTest {
     }
 
     @Test
+    void parsesCompactSlashCommandWithOptionalFocus() {
+        CliCommandParser.ParsedCommand plain = CliCommandParser.parse("/compact");
+        CliCommandParser.ParsedCommand focused = CliCommandParser.parse("/compact keep failed tests and changed files");
+
+        assertEquals(CliCommandParser.CommandType.CONTEXT_COMPACT, plain.type());
+        assertEquals("", plain.payload());
+        assertEquals(CliCommandParser.CommandType.CONTEXT_COMPACT, focused.type());
+        assertEquals("keep failed tests and changed files", focused.payload());
+    }
+
+    @Test
+    void parsesContextEventRecallCommands() {
+        assertEquals(CliCommandParser.CommandType.CONTEXT_EVENTS,
+                CliCommandParser.parse("/context events").type());
+
+        CliCommandParser.ParsedCommand recall = CliCommandParser.parse("/context recall failed tests");
+        assertEquals(CliCommandParser.CommandType.CONTEXT_RECALL, recall.type());
+        assertEquals("failed tests", recall.payload());
+
+        CliCommandParser.ParsedCommand show = CliCommandParser.parse("/context show ctx_123");
+        assertEquals(CliCommandParser.CommandType.CONTEXT_SHOW, show.type());
+        assertEquals("ctx_123", show.payload());
+    }
+
+    @Test
+    void parsesContextInjectCommand() {
+        CliCommandParser.ParsedCommand command = CliCommandParser.parse("/context inject ctx_123");
+
+        assertEquals(CliCommandParser.CommandType.CONTEXT_INJECT, command.type());
+        assertEquals("ctx_123", command.payload());
+    }
+
+    @Test
     void parsesExitSlashCommand() {
         CliCommandParser.ParsedCommand command = CliCommandParser.parse("/exit");
 

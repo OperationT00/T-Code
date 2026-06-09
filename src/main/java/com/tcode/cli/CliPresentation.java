@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class CliPresentation {
-    private static final String VERSION = "1.0.0";
+    private static final String VERSION = "1.0.2";
 
     record StartupScreenInfo(
             String model,
@@ -39,7 +39,32 @@ final class CliPresentation {
     }
 
     static List<SlashCommandHint> slashCommandHints() {
+        SlashCommandHint compactHint = new SlashCommandHint(
+                "/compact ",
+                "/compact [focus]",
+                "Manually compact conversation context");
+        SlashCommandHint contextEventsHint = new SlashCommandHint(
+                "/context events",
+                "/context events",
+                "List recent raw context events");
+        SlashCommandHint contextRecallHint = new SlashCommandHint(
+                "/context recall ",
+                "/context recall <keyword>",
+                "Search raw context events");
+        SlashCommandHint contextShowHint = new SlashCommandHint(
+                "/context show ",
+                "/context show <event_id>",
+                "Show a full raw context event");
+        SlashCommandHint contextInjectHint = new SlashCommandHint(
+                "/context inject ",
+                "/context inject <event_id>",
+                "Inject one raw context event explicitly");
         return List.of(
+                compactHint,
+                contextEventsHint,
+                contextRecallHint,
+                contextShowHint,
+                contextInjectHint,
                 new SlashCommandHint("/model", "/model", "查看当前模型"),
                 new SlashCommandHint("/model glm-5.1", "/model glm-5.1", "切换到 GLM-5.1"),
                 new SlashCommandHint("/model glm-5v-turbo", "/model glm-5v-turbo", "切换到 GLM-5V-Turbo 多模态"),

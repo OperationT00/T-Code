@@ -86,7 +86,7 @@ scheme 白名单(http/https) / 主机黑名单(localhost/loopback/link-local/sit
 ### Memory System
 
 - 两道压缩：
-- 当前会话上下文由 `ContextManager` 管理，`ConversationHistoryCompactor` 在接近 window 上限时压缩早期消息；长工具结果进入上下文前会按工具名保留头尾并摘要截断；`/context` 输出消息数、估算 token、工具摘要次数和历史压缩次数。
+- 当前会话上下文由 `ContextManager` 管理，`ConversationHistoryCompactor` 在接近 window 上限时压缩早期消息；会话压缩摘要使用固定 Markdown handoff 结构（Goal / Constraints / Done / Current State / Key Decisions / Open Issues / Read Files / Modified Files / Next Steps）；长工具结果进入 active context 前会按工具名保留结构化摘要，未知工具回退头尾截断；原始 user / assistant / tool / compaction 事件追加保存到用户目录 JSONL，不自动注入 LLM；`/context` 输出消息数、估算 token、压力等级、工具摘要次数和历史压缩次数；`/compact [focus]` 可手动压缩早期会话并指定摘要关注点；`/context events` / `/context recall <keyword>` / `/context show <event_id>` 只读查看原文事件；`/context inject <event_id>` 显式、限长地把单条事件注入 active context。
 - 长期记忆只通过 `/save` 或用户明确要求保存，落盘为 Markdown：项目级 `.tcode/memory/project.md`，用户级 `~/.tcode/memory/user.md`。
 - 长期记忆只保存跨会话稳定事实，不保存临时指令；默认 project，跨项目通用偏好才用 global。
 - 长期记忆管理命令：`/memory list`、`/memory open [project|global]`、`/memory search <keyword>`、`/memory delete <id>`、`/memory clear`；list/search 输出会展示 project/user Markdown 文件路径和行号 id。

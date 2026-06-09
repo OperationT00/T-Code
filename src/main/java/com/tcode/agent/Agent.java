@@ -3,7 +3,10 @@ package com.tcode.agent;
 import com.tcode.llm.LlmClient;
 import com.tcode.llm.LlmTraceLogger;
 import com.tcode.context.ContextManager;
+import com.tcode.context.ContextEvent;
+import com.tcode.context.ContextEventStore;
 import com.tcode.context.ContextProfile;
+import com.tcode.context.JsonlContextEventStore;
 import com.tcode.context.TokenUsageFormatter;
 import com.tcode.lsp.LspDiagnosticReport;
 import com.tcode.memory.ExplicitMemoryHints;
@@ -62,7 +65,10 @@ public class Agent {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.memoryManager = new MemoryManager(llmClient);
-        this.contextManager = new ContextManager(llmClient, memoryManager.getContextProfile());
+        this.contextManager = new ContextManager(
+                llmClient,
+                memoryManager.getContextProfile(),
+                createContextEventStore(this.toolRegistry.getProjectPath()));
         this.toolRegistry.setContextProfile(memoryManager.getContextProfile());
         this.memoryManager.setProjectPath(this.toolRegistry.getProjectPath());
         this.toolRegistry.setScopedMemorySaver(memoryManager::storeFact);
@@ -247,6 +253,26 @@ public class Agent {
         contextManager.clearKeepingSystem();
     }
 
+    public boolean compactContext(String focus) {
+        return contextManager.compactNow(renderer().stream(), focus);
+    }
+
+    public List<ContextEvent> recentContextEvents(int limit) {
+        return contextManager.recentEvents(limit);
+    }
+
+    public List<ContextEvent> searchContextEvents(String keyword, int limit) {
+        return contextManager.searchEvents(keyword, limit);
+    }
+
+    public java.util.Optional<ContextEvent> findContextEvent(String id) {
+        return contextManager.findEvent(id);
+    }
+
+    public boolean injectContextEvent(String id) {
+        return contextManager.injectEvent(id);
+    }
+
     /**
      * 将记忆上下文注入到 system prompt 中（替换当前 system prompt）
      */
@@ -260,6 +286,13 @@ public class Agent {
                 .externalContext(buildExternalContext())
                 .skillIndex(buildSkillIndex())
                 .build());
+    }
+
+    private ContextEventStore createContextEventStore(String projectPath) {
+        String key = projectPath == null || projectPath.isBlank() ? "unknown" : projectPath;
+        Path path = Path.of(System.getProperty("user.home"), ".tcode", "context",
+                shortSha256(key), "events.jsonl");
+        return new JsonlContextEventStore(path);
     }
 
     private void maybeCompactHistory() {
@@ -412,6 +445,15 @@ public class Agent {
                 formatTokens(total),
                 formatTokens(messagesTokens),
                 formatTokens(toolsSchemaTokens)));
+        com.tcode.context.ContextPressureLevel pressureLevel = contextManager.pressureLevel();
+        com.tcode.context.ToolSummaryPolicy summaryPolicy =
+                com.tcode.context.ToolSummaryPolicy.forLevel(pressureLevel);
+        sb.append(String.format("    Context pressure:     %8s  (%d%%)%n",
+                pressureLevel,
+                window <= 0 ? 0 : (int) Math.floor(total * 100.0 / window)));
+        sb.append(String.format("    Tool summary policy:  max %d chars, edge %d chars%n",
+                summaryPolicy.maxChars(),
+                summaryPolicy.edgeChars()));
         sb.append(String.format("    Tool summaries:       %8d  (saved %s chars)%n",
                 contextManager.summarizedToolResults(),
                 formatTokens(Math.max(0,

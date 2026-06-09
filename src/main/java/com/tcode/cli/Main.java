@@ -34,7 +34,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * t-code v1.0.0 - Terminal-First Agent IDE
+ * t-code v1.0.2 - Terminal-First Agent IDE
  * 支持 ReAct、Plan-and-Execute、Memory、Multi-Agent、HITL、并行工具调用、多模型切换、MCP、CDP 会话复用
  */
 public class Main {

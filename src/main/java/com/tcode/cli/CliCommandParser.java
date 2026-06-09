@@ -21,6 +21,11 @@ final class CliCommandParser {
         MEMORY_OPEN,
         MEMORY_SAVE,
         CONTEXT_STATUS,
+        CONTEXT_COMPACT,
+        CONTEXT_EVENTS,
+        CONTEXT_RECALL,
+        CONTEXT_SHOW,
+        CONTEXT_INJECT,
         POLICY_STATUS,
         AUDIT_TAIL,
         SNAPSHOT,
@@ -164,8 +169,44 @@ final class CliCommandParser {
             return new ParsedCommand(CommandType.MEMORY_SAVE, trimmed.substring(6).trim());
         }
 
+        if (trimmed.equalsIgnoreCase("/context events") || trimmed.equalsIgnoreCase("/ctx events")) {
+            return new ParsedCommand(CommandType.CONTEXT_EVENTS, null);
+        }
+
+        if (trimmed.regionMatches(true, 0, "/context recall ", 0, 16)) {
+            return new ParsedCommand(CommandType.CONTEXT_RECALL, trimmed.substring(16).trim());
+        }
+
+        if (trimmed.regionMatches(true, 0, "/ctx recall ", 0, 12)) {
+            return new ParsedCommand(CommandType.CONTEXT_RECALL, trimmed.substring(12).trim());
+        }
+
+        if (trimmed.regionMatches(true, 0, "/context show ", 0, 14)) {
+            return new ParsedCommand(CommandType.CONTEXT_SHOW, trimmed.substring(14).trim());
+        }
+
+        if (trimmed.regionMatches(true, 0, "/ctx show ", 0, 10)) {
+            return new ParsedCommand(CommandType.CONTEXT_SHOW, trimmed.substring(10).trim());
+        }
+
+        if (trimmed.regionMatches(true, 0, "/context inject ", 0, 16)) {
+            return new ParsedCommand(CommandType.CONTEXT_INJECT, trimmed.substring(16).trim());
+        }
+
+        if (trimmed.regionMatches(true, 0, "/ctx inject ", 0, 12)) {
+            return new ParsedCommand(CommandType.CONTEXT_INJECT, trimmed.substring(12).trim());
+        }
+
         if (trimmed.equalsIgnoreCase("/context") || trimmed.equalsIgnoreCase("/ctx")) {
             return new ParsedCommand(CommandType.CONTEXT_STATUS, null);
+        }
+
+        if (trimmed.equalsIgnoreCase("/compact")) {
+            return new ParsedCommand(CommandType.CONTEXT_COMPACT, "");
+        }
+
+        if (trimmed.regionMatches(true, 0, "/compact ", 0, 9)) {
+            return new ParsedCommand(CommandType.CONTEXT_COMPACT, trimmed.substring(9).trim());
         }
 
         if (trimmed.equalsIgnoreCase("/policy")) {

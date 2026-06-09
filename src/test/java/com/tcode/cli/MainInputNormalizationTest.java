@@ -57,7 +57,7 @@ class MainInputNormalizationTest {
         List<String> lines = CliPresentation.startupBannerLines();
 
         assertTrue(lines.stream().anyMatch(line -> line.contains("t-code")));
-        assertTrue(lines.stream().anyMatch(line -> line.contains("v1.0.0")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("v1.0.2")));
         assertTrue(lines.stream().anyMatch(line -> line.contains("██████████")));
         assertTrue(lines.stream().filter(line -> line.contains("██")).count() >= 5,
                 "banner should render a five-line uppercase T logo");

@@ -57,7 +57,7 @@ public final class LanternaWindow {
 
         // 创建根面板（三栏布局）
         this.rootPane = new RootPane(config, llmClient);
-        this.mainWindow = new BasicWindow("t-code v1.0.0");
+        this.mainWindow = new BasicWindow("t-code v1.0.2");
         mainWindow.setComponent(rootPane);
         gui.addWindow(mainWindow);
 

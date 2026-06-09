@@ -12,7 +12,7 @@
 - 定位：面向商业使用的 Java Agent CLI 产品，对标 Claude Code
 - 已交付 21 期（ReAct → Plan+DAG → Memory → RAG → Multi-Agent → HITL → 并行工具 → 多模型 → 联网 → MCP 核心 → MCP 高级 → 长上下文 → Chrome DevTools → CDP 会话复用 → Skill → TUI → LSP 诊断 → Side-Git 快照 → Prompt 分层 → Runtime API → 图片输入）
 - 下一步：OAuth / sampling / recovery 作为后续 MCP 增强
-- 公开版本：`v1.0.0`，Maven 产物：`t-code-1.0-SNAPSHOT.jar`
+- 公开版本：`v1.0.2`，Maven 产物：`t-code-1.0-SNAPSHOT.jar`
 
 ## 运行前提
 
@@ -69,7 +69,7 @@ Browser / Memory / Skill 的可变依赖统一通过 `ToolRuntimeBindings` 管�
 
 交互 CLI 的 `/browser` 子命令实现统一由 `CliBrowserCommandHandler` 管理：status、autoConnect、旧式端口连接、disconnect 与 tabs 不再作为 `Main` 私有 helper；`CliControlCommandDispatcher` 和 `CliSessionInfrastructure` 共享同一入口。
 
-交互 CLI 的会话级命令统一由 `CliConversationCommandDispatcher` 分发：`/cancel`、`/clear` 与 `/context` 不再堆在 `Main` 的主循环中。`Main` 的命令 switch 只保留 unknown、exit 与 Plan/Team 模式协调。
+交互 CLI 的会话级命令统一由 `CliConversationCommandDispatcher` 分发：`/cancel`、`/clear`、`/context`、`/compact [focus]`、`/context events`、`/context recall <keyword>`、`/context show <event_id>` 与 `/context inject <event_id>` 不再堆在 `Main` 的主循环中。`Main` 的命令 switch 只保留 unknown、exit 与 Plan/Team 模式协调。
 
 交互 CLI 的静态展示内容统一由 `CliPresentation` 管理：startup hints、slash command catalog/help/choices 与 startup banner lines 不再堆在 `Main`；completer 与 LineReader tail tips 共用同一命令目录。
 
@@ -156,7 +156,7 @@ clients/
 - 长期记忆只通过 `/save` 或用户明确要求保存；不要自动提取事实
 - 长期记忆只保存跨会话稳定事实，不保存临时指令；默认项目级作用域，跨项目通用偏好才用 global
 - 长期记忆必须可审计和可删除：`/memory list` / `/memory open [project|global]` / `/memory search <关键词>` / `/memory delete <id>` / `/memory clear`
-- 当前会话上下文压缩由 `ContextManager` / `ConversationHistoryCompactor` 负责；长工具结果进入上下文前会按工具名保留头尾并摘要截断；`/context` 展示消息数、估算 token、工具摘要次数和历史压缩次数；`MemoryManager` 只保存显式长期 Markdown 记忆
+- 当前会话上下文压缩由 `ContextManager` / `ConversationHistoryCompactor` 负责；会话压缩摘要使用固定 Markdown handoff 结构（Goal / Constraints / Done / Current State / Key Decisions / Open Issues / Read Files / Modified Files / Next Steps）；长工具结果进入 active context 前会按工具名保留结构化摘要，未知工具回退头尾截断；原始 user / assistant / tool / compaction 事件追加保存到用户目录 JSONL，不自动注入 LLM；`/context` 展示消息数、估算 token、压力等级、工具摘要次数和历史压缩次数；`/compact [focus]` 可手动压缩早期会话并指定摘要关注点；`/context events` / `/context recall <keyword>` / `/context show <event_id>` 只读查看原文事件；`/context inject <event_id>` 显式、限长地把单条事件注入 active context；`MemoryManager` 只保存显式长期 Markdown 记忆
 
 ### HITL + 策略层
 
