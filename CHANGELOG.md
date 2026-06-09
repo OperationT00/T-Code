@@ -2,6 +2,12 @@
 
 公开版本以能力跃迁为主线。内部设计细节保留在 `docs/phase-*` 文档中。
 
+## v1.0.2 - Context and memory simplification
+
+- Removed RAG from the core coding-agent path and kept realtime code exploration as the default.
+- Reworked context management with pressure levels, structured tool summaries, structured conversation compaction, JSONL raw context events, and explicit recall/inject commands.
+- Simplified long-term memory to explicit Markdown-backed project/global memory.
+
 ## v1.0.0 - 产品化发布
 
 - 加入 inline TUI、LSP 诊断、Side-Git 快照、Prompt 分层、Runtime API 和图片输入。

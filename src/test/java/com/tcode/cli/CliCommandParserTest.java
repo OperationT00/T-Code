@@ -85,6 +85,39 @@ class CliCommandParserTest {
     }
 
     @Test
+    void parsesCompactSlashCommandWithOptionalFocus() {
+        CliCommandParser.ParsedCommand plain = CliCommandParser.parse("/compact");
+        CliCommandParser.ParsedCommand focused = CliCommandParser.parse("/compact keep failed tests and changed files");
+
+        assertEquals(CliCommandParser.CommandType.CONTEXT_COMPACT, plain.type());
+        assertEquals("", plain.payload());
+        assertEquals(CliCommandParser.CommandType.CONTEXT_COMPACT, focused.type());
+        assertEquals("keep failed tests and changed files", focused.payload());
+    }
+
+    @Test
+    void parsesContextEventRecallCommands() {
+        assertEquals(CliCommandParser.CommandType.CONTEXT_EVENTS,
+                CliCommandParser.parse("/context events").type());
+
+        CliCommandParser.ParsedCommand recall = CliCommandParser.parse("/context recall failed tests");
+        assertEquals(CliCommandParser.CommandType.CONTEXT_RECALL, recall.type());
+        assertEquals("failed tests", recall.payload());
+
+        CliCommandParser.ParsedCommand show = CliCommandParser.parse("/context show ctx_123");
+        assertEquals(CliCommandParser.CommandType.CONTEXT_SHOW, show.type());
+        assertEquals("ctx_123", show.payload());
+    }
+
+    @Test
+    void parsesContextInjectCommand() {
+        CliCommandParser.ParsedCommand command = CliCommandParser.parse("/context inject ctx_123");
+
+        assertEquals(CliCommandParser.CommandType.CONTEXT_INJECT, command.type());
+        assertEquals("ctx_123", command.payload());
+    }
+
+    @Test
     void parsesExitSlashCommand() {
         CliCommandParser.ParsedCommand command = CliCommandParser.parse("/exit");
 
@@ -114,6 +147,17 @@ class CliCommandParserTest {
 
         assertEquals(CliCommandParser.CommandType.MEMORY_LIST, command.type());
         assertNull(command.payload());
+    }
+
+    @Test
+    void parsesMemoryOpenSlashCommand() {
+        CliCommandParser.ParsedCommand project = CliCommandParser.parse("/memory open project");
+        CliCommandParser.ParsedCommand global = CliCommandParser.parse("/mem open global");
+
+        assertEquals(CliCommandParser.CommandType.MEMORY_OPEN, project.type());
+        assertEquals("project", project.payload());
+        assertEquals(CliCommandParser.CommandType.MEMORY_OPEN, global.type());
+        assertEquals("global", global.payload());
     }
 
     @Test
@@ -149,19 +193,13 @@ class CliCommandParserTest {
     }
 
     @Test
-    void parsesSearchWithoutPayload() {
-        CliCommandParser.ParsedCommand command = CliCommandParser.parse("/search");
-
-        assertEquals(CliCommandParser.CommandType.SEARCH_CODE, command.type());
-        assertNull(command.payload());
-    }
-
-    @Test
-    void parsesGraphWithoutPayload() {
-        CliCommandParser.ParsedCommand command = CliCommandParser.parse("/graph");
-
-        assertEquals(CliCommandParser.CommandType.GRAPH_QUERY, command.type());
-        assertNull(command.payload());
+    void removedRagCommandsParseAsUnknown() {
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND,
+                CliCommandParser.parse("/index").type());
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND,
+                CliCommandParser.parse("/search login").type());
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND,
+                CliCommandParser.parse("/graph Agent").type());
     }
 
     @Test

@@ -27,7 +27,7 @@ java -jar target/t-code-1.0-SNAPSHOT.jar
 ```
 
 **预期**：
-- Banner 显示简洁的 `t-code v1.0.0` 开屏，使用大写 `T` logo，不带右侧盒线边框
+- Banner 显示简洁的 `t-code v1.0.2` 开屏，使用大写 `T` logo，不带右侧盒线边框
 - 进入 JLine REPL，输入行由 LineReader 停在当前 transcript 位置，提示 `* `
 - **不进 alternate screen**（退出后 banner、对话历史还留在 terminal scrollback 里）
 - 输入行下方留 1 行间距后显示两行 inline 状态区：反色状态栏 + 操作提示行（用例 15 详细验证）

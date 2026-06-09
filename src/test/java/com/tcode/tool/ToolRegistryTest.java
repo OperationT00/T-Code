@@ -13,9 +13,20 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolRegistryTest {
+
+    @Test
+    void toolDefinitionsDoNotExposeSearchCode() {
+        ToolRegistry registry = new ToolRegistry();
+
+        boolean hasSearchCode = registry.getToolDefinitions().stream()
+                .anyMatch(tool -> "search_code".equals(tool.name()));
+
+        assertFalse(hasSearchCode);
+    }
 
     @Test
     void shouldRunCommandInProjectDirectory(@TempDir Path tempDir) {

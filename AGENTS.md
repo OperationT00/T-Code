@@ -12,7 +12,7 @@
 - 定位：面向商业使用的 Java Agent CLI 产品，对标 Claude Code
 - 已交付 21 期（ReAct → Plan+DAG → Memory → RAG → Multi-Agent → HITL → 并行工具 → 多模型 → 联网 → MCP 核心 → MCP 高级 → 长上下文 → Chrome DevTools → CDP 会话复用 → Skill → TUI → LSP 诊断 → Side-Git 快照 → Prompt 分层 → Runtime API → 图片输入）
 - 下一步：OAuth / sampling / recovery 作为后续 MCP 增强
-- 公开版本：`v1.0.0`，Maven 产物：`t-code-1.0-SNAPSHOT.jar`
+- 公开版本：`v1.0.2`，Maven 产物：`t-code-1.0-SNAPSHOT.jar`
 
 ## 运行前提
 
@@ -41,9 +41,9 @@ mvn test -DskipTests=false                  # 全量回归
 | Plan-and-Execute | `PlanExecuteAgent.java` | `/plan` |
 | Multi-Agent | `AgentOrchestrator.java` | `/team` |
 
-核心内置工具 11 个：`read_file` / `write_file` / `list_dir` / `glob_files` / `grep_code` / `execute_command` / `create_project` / `search_code` / `web_search` / `web_fetch` / `revert_turn`
+核心内置工具 10 个：`read_file` / `write_file` / `list_dir` / `glob_files` / `grep_code` / `execute_command` / `create_project` / `web_search` / `web_fetch` / `revert_turn`
 
-`ToolRegistry` 已提供 `ToolProvider` / `ToolRegistrationContext` 扩展口；内置工具声明已全部迁移为独立 provider（File / FileSearch / Project / Shell / RAG / Web / Browser / Memory / Skill / Snapshot）。文件操作、项目脚手架、Shell、实时文件搜索、RAG 检索与 Web 访问实现已分别下沉到 `FileService`、`ProjectScaffolder`、`ShellService`、`FileSearchService`、`RagSearchService` 和 `WebService`；其余实现可继续从 Registry 私有方法逐步下沉，不要把新工具声明直接堆进 `ToolRegistry` 大类。
+`ToolRegistry` 已提供 `ToolProvider` / `ToolRegistrationContext` 扩展口；内置工具声明已全部迁移为独立 provider（File / FileSearch / Project / Shell / Web / Browser / Memory / Skill / Snapshot）。文件操作、项目脚手架、Shell、实时文件搜索与 Web 访问实现已分别下沉到 `FileService`、`ProjectScaffolder`、`ShellService`、`FileSearchService` 和 `WebService`；其余实现可继续从 Registry 私有方法逐步下沉，不要把新工具声明直接堆进 `ToolRegistry` 大类。
 
 Browser / Memory / Skill 的可变依赖统一通过 `ToolRuntimeBindings` 管理；Provider 注册、参数 schema 和 LLM 工具定义导出统一通过 `ToolDefinitionCatalog` 管理；MCP 动态工具 descriptor / invoker 目录统一通过 `McpToolCatalog` 管理；并行工具批次、顺序回收、超时和取消处理统一通过 `ToolBatchExecutor` 管理；单工具执行、审计和浏览器策略挂钩统一通过 `ToolExecutionPipeline` 管理。`ToolRegistry` 对外保留兼容 setter、MCP 注册 API、`executeTool()` 与 `executeTools()`，内部主要负责组装和 facade 转发。
 
@@ -65,13 +65,11 @@ Browser / Memory / Skill 的可变依赖统一通过 `ToolRuntimeBindings` 管�
 
 交互 CLI 的低耦合控制命令统一由 `CliControlCommandDispatcher` 分发：输入历史清理、HITL 开关、Memory、Policy、Audit、Snapshot、MCP 管理、Browser、后台 Task 和 Skill 管理不再堆在 `Main` 的主循环中。会改变 Agent 执行模式或依赖对话状态的命令仍由 `Main` 协调。
 
-交互 CLI 的 RAG 代码检索命令统一由 `CliCodeSearchCommandDispatcher` 分发：`/index`、`/search` 与 `/graph` 不再堆在 `Main` 的主循环中。`/index` 完成后仍需同步更新 ToolRegistry 与 MemoryManager 的项目路径。
-
 交互 CLI 的模型切换统一由 `CliModelCommandDispatcher` 分发：`/model` 状态展示、provider 解析、client 创建、配置保存与 Agent client 更新不再堆在 `Main`。只读 `/config` palette 统一由 `CliConfigCommandDispatcher` 分发。
 
 交互 CLI 的 `/browser` 子命令实现统一由 `CliBrowserCommandHandler` 管理：status、autoConnect、旧式端口连接、disconnect 与 tabs 不再作为 `Main` 私有 helper；`CliControlCommandDispatcher` 和 `CliSessionInfrastructure` 共享同一入口。
 
-交互 CLI 的会话级命令统一由 `CliConversationCommandDispatcher` 分发：`/cancel`、`/clear` 与 `/context` 不再堆在 `Main` 的主循环中。`Main` 的命令 switch 只保留 unknown、exit 与 Plan/Team 模式协调。
+交互 CLI 的会话级命令统一由 `CliConversationCommandDispatcher` 分发：`/cancel`、`/clear`、`/context`、`/compact [focus]`、`/context events`、`/context recall <keyword>`、`/context show <event_id>` 与 `/context inject <event_id>` 不再堆在 `Main` 的主循环中。`Main` 的命令 switch 只保留 unknown、exit 与 Plan/Team 模式协调。
 
 交互 CLI 的静态展示内容统一由 `CliPresentation` 管理：startup hints、slash command catalog/help/choices 与 startup banner lines 不再堆在 `Main`；completer 与 LineReader tail tips 共用同一命令目录。
 
@@ -99,9 +97,9 @@ CLI 的环境初始化统一由 `CliEnvironmentConfig` 管理：macOS AWT headle
 
 交互 CLI 的待执行模式状态统一由 `CliExecutionModeState` 管理：ReAct / Plan / Team 选择、ESC 取消和任务完成后的重置不再由多个布尔变量拼接。
 
-跨平台输出约定：`glob_files` / `grep_code` 与 Memory / RAG 项目键统一使用 `/` 展示路径；`execute_command` 在 Windows 使用 PowerShell，在其他平台使用 `bash`。RAG embedding 服务不可用时仍保留代码块和关键词索引，不应让 `/index` 完全失效。
+跨平台输出约定：`glob_files` / `grep_code` 与 Memory 项目键统一使用 `/` 展示路径；`execute_command` 在 Windows 使用 PowerShell，在其他平台使用 `bash`。
 
-代码库理解默认走 Claude Code 式实时探索：`glob_files` 找候选文件、`grep_code` 精确定位符号或字符串、`read_file` 按需读取具体行段。`search_code` 是 RAG 语义辅助，适合模糊自然语言、关键词不明确、常规搜索无果、巨型/跨知识检索场景，不作为精确代码定位的首选。
+代码库理解默认走 Claude Code 式实时探索：`glob_files` 找候选文件、`grep_code` 精确定位符号或字符串、`read_file` 按需读取具体行段，并结合 `execute_command` / LSP 诊断做验证。不再在核心路径内维护 RAG 代码索引。
 
 MCP 动态工具：`mcp__{server}__{tool}`（+ resources 虚拟工具）
 
@@ -113,10 +111,9 @@ src/main/java/com/tcode/
 ├── cli/         Main.java, CliCommandParser.java, PlanReviewInputParser.java
 ├── browser/     BrowserSession, BrowserGuard, SensitivePagePolicy
 ├── llm/         GLMClient, DeepSeekClient, StepClient, KimiClient
-├── context/     ContextProfile, ContextMode, TokenUsageFormatter
-├── memory/      MemoryManager, ConversationHistoryCompactor, LongTermMemory
+├── context/     ContextProfile, ContextMode, TokenUsageFormatter, ContextManager, ConversationHistoryCompactor
+├── memory/      MemoryManager, MarkdownMemoryStore, MemoryScope
 ├── plan/        Planner, ExecutionPlan, Task
-├── rag/         CodeIndex, CodeRetriever, VectorStore, CodeChunker
 ├── lsp/         LspManager, LspDiagnosticFormatter
 ├── prompt/      PromptAssembler, PromptContext, PromptRepository
 ├── image/       ImageReferenceParser
@@ -142,7 +139,6 @@ clients/
 - `BottomStatusBar` 现在是 JLine `Status` 托管的底部 dock：由 JLine 维护滚动区域和状态行位置，不再手写 `\n` / `moveUp` / `CLEAR_TO_EOS` 清屏。输入期会把 LineReader 光标定位到 dock 上方一行，让 `*` 输入行和 Status 同处底部区域；dock 保留两类信息：上层模式 + MCP/Skill 摘要，下层 Auto Model / model / phase / ctx 百分比与 token / cost / elapsed / cwd。
 - 普通任务和斜杠命令提交后，`Main` 会把本轮原始输入以暗色整行块写回 transcript：输入态左提示仍是 `* `，提交回显左提示改为 `>`；单行输入只占一行，不额外追加空白行。普通任务随后再展开 MCP resource / 本地 `@path` 并进入 Agent；不要只依赖 JLine 提交行残留，否则 activity 重绘或 dock 刷新可能让用户输入从可见历史里消失。
 - ReAct LLM 调用期间，inline renderer 使用固定高度 live thinking 区动态显示 `Thinking...` 和灰色竖线 reasoning 预览；该区域只能清理自己刚打印的几行，不能用独立 JLine `Display.update()` / `CLEAR_TO_EOS` 向上覆盖 transcript。content 或 tool call 开始前先清掉 live 区，再把完整 reasoning 引用块落到正文区，正文回答用低调标记起始，不再刷强标题。
-- 交互期输出应优先走 `Renderer.stream()`；`Main`、`PlanExecuteAgent`、`Planner`、`AgentOrchestrator` 都支持把输出流接到 inline renderer，避免直接争抢 stdout。`CodeIndex` 的索引进度通过 `ProgressListener` 注入，`/index` 应绑定到当前 renderer 输出流。
 - Phase 22 开始，`InlineRenderer` 可绑定当前 `LineReader`；当 `LineReader.isReading()` 为 true 时，`Renderer.stream()` 的完整行输出优先通过 `LineReader#printAbove` 显示在输入行上方，未绑定 / 非读取态 / 测试路径回退到原 `PrintStream`。
 - ReAct 正常结束后不再把 `📊 Token: ...` 打进正文区；token/cost/elapsed 会保留在底部强状态行，phase 回到 `idle`。
 - 默认 CLI 启动路径应尽早建立 `Terminal -> LineReader -> Renderer`，启动 Banner、模型加载、MCP 启动、Skill summary、ReAct 提示和退出提示都应走 `Renderer.stream()`；除 fatal bootstrap / runtime API / legacy TUI 降级外，不要在交互主路径新增裸 `System.out.println`。
@@ -159,8 +155,8 @@ clients/
 
 - 长期记忆只通过 `/save` 或用户明确要求保存；不要自动提取事实
 - 长期记忆只保存跨会话稳定事实，不保存临时指令；默认项目级作用域，跨项目通用偏好才用 global
-- 长期记忆必须可审计和可删除：`/memory list` / `/memory search <关键词>` / `/memory delete <id>` / `/memory clear`
-- 两道压缩不要混淆：shortTermMemory 压缩 vs conversationHistory 压缩（后者是防 window 超限的关键）
+- 长期记忆必须可审计和可删除：`/memory list` / `/memory open [project|global]` / `/memory search <关键词>` / `/memory delete <id>` / `/memory clear`
+- 当前会话上下文压缩由 `ContextManager` / `ConversationHistoryCompactor` 负责；会话压缩摘要使用固定 Markdown handoff 结构（Goal / Constraints / Done / Current State / Key Decisions / Open Issues / Read Files / Modified Files / Next Steps）；长工具结果进入 active context 前会按工具名保留结构化摘要，未知工具回退头尾截断；原始 user / assistant / tool / compaction 事件追加保存到用户目录 JSONL，不自动注入 LLM；`/context` 展示消息数、估算 token、压力等级、工具摘要次数和历史压缩次数；`/compact [focus]` 可手动压缩早期会话并指定摘要关注点；`/context events` / `/context recall <keyword>` / `/context show <event_id>` 只读查看原文事件；`/context inject <event_id>` 显式、限长地把单条事件注入 active context；`MemoryManager` 只保存显式长期 Markdown 记忆
 
 ### HITL + 策略层
 
@@ -215,15 +211,13 @@ clients/
 
 对应 Client + `LlmClientFactory.java` + `.env.example` + 文档
 
-### 5.1 改 Embedding → `EmbeddingClient` + `VectorStore` + `.env.example` + 文档
+### 5.1 改 Web/搜索 → `web/` 相关 + ToolRegistry + `.env.example` + 文档 + 测试
 
-### 5.2 改 Web/搜索 → `web/` 相关 + ToolRegistry + `.env.example` + 文档 + 测试
+### 5.2 改 Memory/Context → `MemoryManager` + `MarkdownMemoryStore` + `ContextManager` + `TokenBudget` + 测试 + 文档
 
-### 5.3 改 Memory → `MemoryManager` + `LongTermMemory` + `TokenBudget` + 测试 + 文档
+### 5.3 改 HITL/策略 → `policy/` + ToolRegistry + HitlToolRegistry + 提示词 + `.env.example` + 文档 + 测试
 
-### 5.4 改 HITL/策略 → `policy/` + ToolRegistry + HitlToolRegistry + 提示词 + `.env.example` + 文档 + 测试
-
-### 5.5 改 MCP → `mcp/` + ToolRegistry + HITL + AuditLog + 提示词 + 文档 + 测试
+### 5.4 改 MCP → `mcp/` + ToolRegistry + HITL + AuditLog + 提示词 + 文档 + 测试
 
 ### 6. 不提交 `.env` / 真实 API Key / `target/` 产物
 
@@ -238,7 +232,6 @@ clients/
 | DAG/Plan | `mvn test -Dtest=ExecutionPlanTest` |
 | Multi-Agent | `mvn test -Dtest=AgentRoleTest,AgentMessageTest,AgentOrchestratorTest` |
 | TUI/终端 | `mvn test -Pphase16-smoke` |
-| RAG | `mvn test -Dtest=CodeChunkerTest,CodeAnalyzerTest,VectorStoreTest,CodeIndexTest` |
 | 常规回归 | `mvn test -Pquick` |
 
 ## 给新线程的导航
@@ -252,7 +245,6 @@ clients/
 | 工具调用 | ToolRegistry.java + Agent.java |
 | 代码搜索 | ToolRegistry.java (`glob_files` / `grep_code` / `read_file`) |
 | 模型/API | llm/*Client.java + LlmClientFactory.java |
-| RAG 语义辅助 | CodeRetriever.java + CodeIndex.java + VectorStore.java |
 | Multi-Agent | AgentOrchestrator.java + SubAgent.java |
 | MCP | McpServerManager.java + McpClient.java |
 | TUI/渲染 | render/Renderer.java + RendererFactory.java |

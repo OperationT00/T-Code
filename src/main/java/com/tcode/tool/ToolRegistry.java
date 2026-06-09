@@ -46,7 +46,6 @@ public class ToolRegistry {
             this::runPostEditLspHook);
     private final ProjectScaffolder projectScaffolder = new ProjectScaffolder(() -> pathGuard);
     private final FileSearchService fileSearchService = new FileSearchService(() -> pathGuard);
-    private final RagSearchService ragSearchService = new RagSearchService(() -> projectPath);
     private final WebService webService = new WebService();
     private final ShellService shellService;
     private final ToolBatchExecutor batchExecutor;
@@ -69,7 +68,6 @@ public class ToolRegistry {
         registerProvider(new FileSearchToolsProvider(fileSearchService::glob, fileSearchService::grep));
         registerProvider(new ShellToolsProvider(shellService::execute));
         registerProvider(new ProjectToolsProvider(projectScaffolder::create));
-        registerProvider(new RagToolsProvider(ragSearchService::search));
         registerProvider(new WebToolsProvider(webService::search, webService::fetch));
         registerProvider(new BrowserToolsProvider(runtimeBindings::browserConnector));
         registerProvider(new MemoryToolsProvider(runtimeBindings::memorySaver));

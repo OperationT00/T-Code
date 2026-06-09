@@ -1,121 +1,121 @@
 package com.tcode.memory;
 
 import com.tcode.llm.GLMClient;
-import com.tcode.llm.LlmClient;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.List;
-import java.util.Queue;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MemoryManagerTest {
 
     @TempDir
     Path tempDir;
+    private String oldMemoryDir;
+
+    @BeforeEach
+    void isolateMemoryDir() {
+        oldMemoryDir = System.getProperty("tcode.memory.dir");
+        System.setProperty("tcode.memory.dir", tempDir.resolve("global-memory").toString());
+    }
+
+    @AfterEach
+    void restoreMemoryDir() {
+        if (oldMemoryDir == null) {
+            System.clearProperty("tcode.memory.dir");
+        } else {
+            System.setProperty("tcode.memory.dir", oldMemoryDir);
+        }
+    }
 
     @Test
-    void shouldCompressBeforeShortTermMemoryEvictsOldEntries() {
-        StubGLMClient llmClient = new StubGLMClient(List.of(
-                new LlmClient.ChatResponse("assistant", "压缩摘要", null, 100, 20)
-        ));
-        MemoryManager memoryManager = new MemoryManager(
-                llmClient,
-                40,
-                128000,
-                new LongTermMemory(tempDir.toFile())
-        );
-        String longMessage = "a".repeat(36);
+    void conversationMessagesDoNotEnterMemoryManager() {
+        MemoryManager memoryManager = new MemoryManager(new GLMClient("test-key"));
+        memoryManager.setProjectPath(tempDir.resolve("project").toString());
 
-        memoryManager.addUserMessage(longMessage);
-        memoryManager.addAssistantMessage(longMessage);
-        memoryManager.addUserMessage(longMessage);
-        memoryManager.addAssistantMessage(longMessage);
+        memoryManager.addUserMessage("user task");
+        memoryManager.addAssistantMessage("assistant result");
+        memoryManager.addToolResult("read_file", "file content");
 
-        assertTrue(memoryManager.getShortTermMemory().getAll().stream()
-                .anyMatch(entry -> entry.getType() == MemoryEntry.MemoryType.SUMMARY));
+        assertTrue(memoryManager.listLongTerm().isEmpty());
+        assertTrue(memoryManager.buildMemoryContext().isBlank());
     }
 
     @Test
     void shouldClearLongTermMemoryOnlyWhenExplicitlyRequested() {
-        LongTermMemory longTermMemory = new LongTermMemory(tempDir.toFile());
-        MemoryManager memoryManager = new MemoryManager(new StubGLMClient(List.of()), 32768, 128000, longTermMemory);
+        MemoryManager memoryManager = new MemoryManager(new GLMClient("test-key"));
+        memoryManager.setProjectPath(tempDir.resolve("project").toString());
 
-        memoryManager.storeFact("用户偏好使用中文交流");
-        memoryManager.storeFact("项目路径: /tmp/demo");
-        assertEquals(2, longTermMemory.size());
+        memoryManager.storeFact("User prefers Chinese replies", "global");
+        memoryManager.storeFact("Project uses Java 17");
+        assertEquals(2, memoryManager.listLongTerm().size());
 
         memoryManager.clearLongTerm();
 
-        assertEquals(0, longTermMemory.size());
+        assertTrue(memoryManager.listLongTerm().isEmpty());
     }
 
     @Test
-    void shouldStoreProjectScopedFactsByDefault() {
-        LongTermMemory longTermMemory = new LongTermMemory(tempDir.toFile());
-        MemoryManager memoryManager = new MemoryManager(new StubGLMClient(List.of()), 32768, 128000, longTermMemory);
-        memoryManager.setProjectPath("/repo/current");
+    void shouldStoreProjectScopedFactsByDefault() throws Exception {
+        Path projectRoot = tempDir.resolve("current");
+        MemoryManager memoryManager = new MemoryManager(new GLMClient("test-key"));
+        memoryManager.setProjectPath(projectRoot.toString());
 
-        memoryManager.storeFact("当前项目使用 Java 17");
-        memoryManager.storeFact("默认用中文回答", "global");
+        memoryManager.storeFact("Project uses Java 17");
+        memoryManager.storeFact("Prefer concise answers", "global");
 
-        MemoryEntry projectEntry = longTermMemory.search("Java", 5, memoryManager.getCurrentProject()).get(0);
+        MemoryEntry projectEntry = memoryManager.searchLongTerm("Java", 5).get(0);
         assertEquals("project", projectEntry.getMetadata().get("scope"));
-        assertTrue(projectEntry.getMetadata().get("project").endsWith("/repo/current"));
-        assertEquals("global", longTermMemory.search("中文", 5).get(0).getMetadata().get("scope"));
+        assertTrue(projectEntry.getMetadata().get("project").endsWith("/current"));
+        assertEquals("global", memoryManager.searchLongTerm("concise", 5).get(0).getMetadata().get("scope"));
+        assertTrue(Files.readString(projectRoot.resolve(".tcode/memory/project.md")).contains("- Project uses Java 17"));
     }
 
     @Test
     void shouldSearchOnlyCurrentProjectAndGlobalFacts() {
-        LongTermMemory longTermMemory = new LongTermMemory(tempDir.toFile());
-        MemoryManager memoryManager = new MemoryManager(new StubGLMClient(List.of()), 32768, 128000, longTermMemory);
-        memoryManager.setProjectPath("/repo/current");
-        longTermMemory.store(new MemoryEntry("current", "当前项目使用 Java 17", MemoryEntry.MemoryType.FACT,
-                java.util.Map.of("scope", "project", "project", memoryManager.getCurrentProject()), 10));
-        longTermMemory.store(new MemoryEntry("other", "其他项目使用 Java 8", MemoryEntry.MemoryType.FACT,
-                java.util.Map.of("scope", "project", "project", "/repo/other"), 10));
+        Path currentProject = tempDir.resolve("current");
+        Path otherProject = tempDir.resolve("other");
+        MemoryManager current = new MemoryManager(new GLMClient("test-key"));
+        current.setProjectPath(currentProject.toString());
+        current.storeFact("Current project uses Java 17");
+        current.storeFact("Global preference uses concise answers", "global");
 
-        List<MemoryEntry> results = memoryManager.searchLongTerm("Java", 10);
+        MemoryManager other = new MemoryManager(new GLMClient("test-key"));
+        other.setProjectPath(otherProject.toString());
 
-        assertEquals(1, results.size());
-        assertEquals("current", results.get(0).getId());
+        List<MemoryEntry> currentResults = current.searchLongTerm("Java", 10);
+        List<MemoryEntry> otherResults = other.searchLongTerm("Java", 10);
+
+        assertEquals(1, currentResults.size());
+        assertTrue(otherResults.isEmpty());
+        assertEquals(1, other.searchLongTerm("concise", 10).size());
+    }
+
+    @Test
+    void shouldBuildMarkdownMemoryContext() {
+        MemoryManager memoryManager = new MemoryManager(new GLMClient("test-key"));
+        memoryManager.setProjectPath(tempDir.resolve("project").toString());
+        memoryManager.storeFact("Project uses Maven");
+
+        String context = memoryManager.buildMemoryContext();
+
+        assertTrue(context.contains("## Long-term Memory"));
+        assertTrue(context.contains("- [project] Project uses Maven"));
     }
 
     @Test
     void compressionTriggerRatioAppliesToAllModelsUniformly() {
-        // 验证：长 window 模型也使用统一的 90% 压缩触发阈值，没有"长模式不压缩"的二元开关
         MemoryManager memoryManager = new MemoryManager(new GLMClient("test-key"));
 
         assertEquals(0.90, memoryManager.getContextProfile().compressionTriggerRatio(), 0.001);
         assertEquals(200000, memoryManager.getTokenBudget().getContextWindow());
         assertEquals(180000, memoryManager.getContextProfile().compressionTriggerTokens());
-    }
-
-    private static final class StubGLMClient extends GLMClient {
-        private final Queue<ChatResponse> responses;
-
-        private StubGLMClient(List<ChatResponse> responses) {
-            super("test-key");
-            this.responses = new ArrayDeque<>(responses);
-        }
-
-        @Override
-        public ChatResponse chat(List<Message> messages, List<Tool> tools) throws IOException {
-            return chat(messages, tools, StreamListener.NO_OP);
-        }
-
-        @Override
-        public ChatResponse chat(List<Message> messages, List<Tool> tools, StreamListener listener) throws IOException {
-            ChatResponse response = responses.poll();
-            if (response == null) {
-                throw new IOException("缺少预设响应");
-            }
-            return response;
-        }
     }
 }

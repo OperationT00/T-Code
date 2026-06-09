@@ -57,7 +57,7 @@ class MainInputNormalizationTest {
         List<String> lines = CliPresentation.startupBannerLines();
 
         assertTrue(lines.stream().anyMatch(line -> line.contains("t-code")));
-        assertTrue(lines.stream().anyMatch(line -> line.contains("v1.0.0")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("v1.0.2")));
         assertTrue(lines.stream().anyMatch(line -> line.contains("██████████")));
         assertTrue(lines.stream().filter(line -> line.contains("██")).count() >= 5,
                 "banner should render a five-line uppercase T logo");
@@ -181,14 +181,14 @@ class MainInputNormalizationTest {
     }
 
     @Test
-    void slashCommandHintsIncludeRagSlashCommands() {
+    void slashCommandHintsDoNotIncludeRagSlashCommands() {
         List<String> commands = CliPresentation.slashCommandHints().stream()
                 .map(CliPresentation.SlashCommandHint::display)
                 .toList();
 
-        assertTrue(commands.contains("/index [路径]"));
-        assertTrue(commands.contains("/search <查询>"));
-        assertTrue(commands.contains("/graph <类名>"));
+        assertFalse(commands.stream().anyMatch(command -> command.startsWith("/index")));
+        assertFalse(commands.stream().anyMatch(command -> command.startsWith("/search")));
+        assertFalse(commands.stream().anyMatch(command -> command.startsWith("/graph")));
     }
 
     @Test

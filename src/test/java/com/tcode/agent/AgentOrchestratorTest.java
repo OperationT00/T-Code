@@ -5,7 +5,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.tcode.llm.GLMClient;
 import com.tcode.llm.LlmClient;
-import com.tcode.memory.LongTermMemory;
 import com.tcode.memory.MemoryManager;
 import com.tcode.tool.ToolRegistry;
 
@@ -400,7 +399,8 @@ class AgentOrchestratorTest {
 
     private static final class NoOpMemoryManager extends MemoryManager {
         private NoOpMemoryManager(File storageDir) {
-            super(new GLMClient("test-key"), 32768, 200000, new LongTermMemory(storageDir));
+            super(new GLMClient("test-key"), 32768, 200000);
+            setProjectPath(storageDir.toPath().toString());
         }
     }
 

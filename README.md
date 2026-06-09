@@ -2,15 +2,15 @@
 
 一个使用 Java 构建的 Agent Coding CLI。
 
-`t-code` 可以在终端中理解代码库、读取和修改文件、执行命令、规划复杂任务，并通过 Memory、RAG、联网搜索、MCP 与 Skill 扩展能力。
+`t-code` 可以在终端中理解代码库、读取和修改文件、执行命令、规划复杂任务，并通过 Memory、联网搜索、MCP 与 Skill 扩展能力。
 
-当前公开版本：`v1.0.0`
+当前公开版本：`v1.0.2`
 
 ## 功能亮点
 
 - **三种执行模式**：默认 ReAct、`/plan` 规划执行、`/team` 多 Agent 协作
-- **代码库探索**：支持 glob、grep、文件读取和 RAG 语义检索
-- **上下文与记忆**：短期上下文压缩、长期记忆、项目级与全局偏好
+- **代码库探索**：支持 glob、grep、文件读取、命令执行和 LSP 诊断辅助
+- **上下文与记忆**：ContextManager 统一管理会话上下文、压力等级、工具结果摘要、结构化会话压缩、手动压缩和原文事件日志，长期记忆通过项目级/用户级 Markdown 显式保存
 - **工具能力**：文件操作、Shell、联网搜索、网页抓取和并行工具调用
 - **MCP 与 Skill**：接入 stdio、Streamable HTTP server 和按需加载的 Skill
 - **终端体验**：JLine inline TUI、状态栏、输入补全、历史记录、图片输入和任务取消
@@ -85,9 +85,13 @@ KIMI_API_KEY=
 | `/cancel` | 取消当前任务 |
 | `/clear` | 清空当前对话 |
 | `/context` | 查看上下文与 Token 状态 |
-| `/index [路径]` | 建立代码索引 |
-| `/search <查询>` | 语义检索代码 |
+| `/compact [focus]` | 手动压缩当前会话上下文，可指定摘要关注点 |
+| `/context events` | 查看最近原文上下文事件 |
+| `/context recall <keyword>` | 只读搜索原文上下文事件 |
+| `/context show <event_id>` | 查看单条原文上下文事件全文 |
+| `/context inject <event_id>` | 显式、限长地把单条原文事件注入当前上下文 |
 | `/memory list` | 查看长期记忆 |
+| `/memory open [project|global]` | 打开/定位 Markdown 记忆文件 |
 | `/mcp` | 查看 MCP server 状态 |
 | `/browser status` | 查看浏览器连接状态 |
 | `/hitl on` | 开启危险操作审批 |
