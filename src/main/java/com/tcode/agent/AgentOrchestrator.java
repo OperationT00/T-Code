@@ -136,7 +136,6 @@ public class AgentOrchestrator {
      */
     public String run(String userInput) {
         log.info("Multi-Agent run started: inputLength={}", userInput == null ? 0 : userInput.length());
-        memoryManager.addUserMessage(userInput);
         if (CancellationContext.isCancelled()) {
             return "⏹️ 已取消当前多 Agent 任务。";
         }
@@ -210,7 +209,6 @@ public class AgentOrchestrator {
 
         // 6. 汇总结果
         String finalResult = buildFinalResult(steps);
-        memoryManager.addAssistantMessage("[多Agent结果] " + finalResult);
 
         return finalResult;
     }

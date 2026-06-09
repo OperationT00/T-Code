@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TCodeCompleterTest {
@@ -23,7 +24,7 @@ class TCodeCompleterTest {
 
         assertTrue(candidates.stream().anyMatch(c -> c.displ().equals("/model")));
         assertTrue(candidates.stream().anyMatch(c -> c.displ().equals("/browser connect")));
-        assertTrue(candidates.stream().anyMatch(c -> c.displ().equals("/search <查询>")));
+        assertFalse(candidates.stream().anyMatch(c -> c.displ().startsWith("/search")));
     }
 
     @Test

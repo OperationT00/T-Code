@@ -181,14 +181,14 @@ class MainInputNormalizationTest {
     }
 
     @Test
-    void slashCommandHintsIncludeRagSlashCommands() {
+    void slashCommandHintsDoNotIncludeRagSlashCommands() {
         List<String> commands = CliPresentation.slashCommandHints().stream()
                 .map(CliPresentation.SlashCommandHint::display)
                 .toList();
 
-        assertTrue(commands.contains("/index [路径]"));
-        assertTrue(commands.contains("/search <查询>"));
-        assertTrue(commands.contains("/graph <类名>"));
+        assertFalse(commands.stream().anyMatch(command -> command.startsWith("/index")));
+        assertFalse(commands.stream().anyMatch(command -> command.startsWith("/search")));
+        assertFalse(commands.stream().anyMatch(command -> command.startsWith("/graph")));
     }
 
     @Test

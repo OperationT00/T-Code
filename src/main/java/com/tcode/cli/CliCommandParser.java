@@ -18,10 +18,8 @@ final class CliCommandParser {
         MEMORY_LIST,
         MEMORY_DELETE,
         MEMORY_SEARCH,
+        MEMORY_OPEN,
         MEMORY_SAVE,
-        INDEX_CODE,
-        SEARCH_CODE,
-        GRAPH_QUERY,
         CONTEXT_STATUS,
         POLICY_STATUS,
         AUDIT_TAIL,
@@ -130,6 +128,18 @@ final class CliCommandParser {
             return new ParsedCommand(CommandType.MEMORY_LIST, null);
         }
 
+        if (trimmed.equalsIgnoreCase("/memory open") || trimmed.equalsIgnoreCase("/mem open")) {
+            return new ParsedCommand(CommandType.MEMORY_OPEN, "project");
+        }
+
+        if (trimmed.regionMatches(true, 0, "/memory open ", 0, 13)) {
+            return new ParsedCommand(CommandType.MEMORY_OPEN, trimmed.substring(13).trim());
+        }
+
+        if (trimmed.regionMatches(true, 0, "/mem open ", 0, 10)) {
+            return new ParsedCommand(CommandType.MEMORY_OPEN, trimmed.substring(10).trim());
+        }
+
         if (trimmed.regionMatches(true, 0, "/memory delete ", 0, 15)) {
             return new ParsedCommand(CommandType.MEMORY_DELETE, trimmed.substring(15).trim());
         }
@@ -152,30 +162,6 @@ final class CliCommandParser {
 
         if (trimmed.regionMatches(true, 0, "/save ", 0, 6)) {
             return new ParsedCommand(CommandType.MEMORY_SAVE, trimmed.substring(6).trim());
-        }
-
-        if (trimmed.equalsIgnoreCase("/index")) {
-            return new ParsedCommand(CommandType.INDEX_CODE, null);
-        }
-
-        if (trimmed.regionMatches(true, 0, "/index ", 0, 7)) {
-            return new ParsedCommand(CommandType.INDEX_CODE, trimmed.substring(7).trim());
-        }
-
-        if (trimmed.equalsIgnoreCase("/search")) {
-            return new ParsedCommand(CommandType.SEARCH_CODE, null);
-        }
-
-        if (trimmed.regionMatches(true, 0, "/search ", 0, 8)) {
-            return new ParsedCommand(CommandType.SEARCH_CODE, trimmed.substring(8).trim());
-        }
-
-        if (trimmed.equalsIgnoreCase("/graph")) {
-            return new ParsedCommand(CommandType.GRAPH_QUERY, null);
-        }
-
-        if (trimmed.regionMatches(true, 0, "/graph ", 0, 7)) {
-            return new ParsedCommand(CommandType.GRAPH_QUERY, trimmed.substring(7).trim());
         }
 
         if (trimmed.equalsIgnoreCase("/context") || trimmed.equalsIgnoreCase("/ctx")) {

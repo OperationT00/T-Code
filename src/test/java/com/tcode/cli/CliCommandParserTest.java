@@ -117,6 +117,17 @@ class CliCommandParserTest {
     }
 
     @Test
+    void parsesMemoryOpenSlashCommand() {
+        CliCommandParser.ParsedCommand project = CliCommandParser.parse("/memory open project");
+        CliCommandParser.ParsedCommand global = CliCommandParser.parse("/mem open global");
+
+        assertEquals(CliCommandParser.CommandType.MEMORY_OPEN, project.type());
+        assertEquals("project", project.payload());
+        assertEquals(CliCommandParser.CommandType.MEMORY_OPEN, global.type());
+        assertEquals("global", global.payload());
+    }
+
+    @Test
     void parsesMemorySearchSlashCommand() {
         CliCommandParser.ParsedCommand command = CliCommandParser.parse("/memory search Chrome 登录态");
 
@@ -149,19 +160,13 @@ class CliCommandParserTest {
     }
 
     @Test
-    void parsesSearchWithoutPayload() {
-        CliCommandParser.ParsedCommand command = CliCommandParser.parse("/search");
-
-        assertEquals(CliCommandParser.CommandType.SEARCH_CODE, command.type());
-        assertNull(command.payload());
-    }
-
-    @Test
-    void parsesGraphWithoutPayload() {
-        CliCommandParser.ParsedCommand command = CliCommandParser.parse("/graph");
-
-        assertEquals(CliCommandParser.CommandType.GRAPH_QUERY, command.type());
-        assertNull(command.payload());
+    void removedRagCommandsParseAsUnknown() {
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND,
+                CliCommandParser.parse("/index").type());
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND,
+                CliCommandParser.parse("/search login").type());
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND,
+                CliCommandParser.parse("/graph Agent").type());
     }
 
     @Test

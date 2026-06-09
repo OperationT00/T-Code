@@ -6,8 +6,8 @@ import com.tcode.agent.PlanExecuteAgent;
 import com.tcode.config.TCodeConfig;
 import com.tcode.hitl.HitlHandler;
 import com.tcode.llm.LlmClient;
-import com.tcode.memory.LongTermMemory;
 import com.tcode.memory.MemoryEntry;
+import com.tcode.memory.MemoryManager;
 import com.tcode.runtime.CancellationContext;
 import com.tcode.runtime.CancellationToken;
 import com.tcode.snapshot.RestoreResult;
@@ -20,6 +20,7 @@ import com.tcode.tui.pane.StatusPane;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -126,6 +127,7 @@ public final class TuiSessionController implements AutoCloseable {
         if ("/memory".equals(lower) || "/mem".equals(lower)) {
             appendSystem(reactAgent.getMemoryManager().getSystemStatus()
                     + "\n/memory list - 查看长期记忆"
+                    + "\n/memory open [project|global] - 定位 Markdown 记忆文件"
                     + "\n/memory search <关键词> - 搜索当前项目可见长期记忆"
                     + "\n/memory delete <id> - 删除单条长期记忆"
                     + "\n/memory clear - 清空长期记忆"
@@ -135,6 +137,18 @@ public final class TuiSessionController implements AutoCloseable {
         }
         if ("/memory list".equals(lower) || "/mem list".equals(lower)) {
             appendSystem(formatMemoryEntries(reactAgent.getMemoryManager().listLongTerm()));
+            return true;
+        }
+        if ("/memory open".equals(lower) || "/mem open".equals(lower)
+                || lower.startsWith("/memory open ") || lower.startsWith("/mem open ")) {
+            int prefixLength = lower.startsWith("/mem open") ? 9 : 12;
+            String scope = input.length() > prefixLength ? input.substring(prefixLength).trim() : "";
+            String normalizedScope = normalizeMemoryOpenScope(scope);
+            if (normalizedScope == null) {
+                appendSystem("/memory open only supports project or global");
+            } else {
+                appendSystem(formatMemoryOpenResult(reactAgent.getMemoryManager(), normalizedScope));
+            }
             return true;
         }
         if (lower.startsWith("/memory search ") || lower.startsWith("/mem search ")) {
@@ -239,7 +253,7 @@ public final class TuiSessionController implements AutoCloseable {
         if (input.startsWith("/")) {
             appendSystem("""
                     TUI 当前支持命令：
-                    /clear, /context, /memory, /memory clear, /save <事实>
+                    /clear, /context, /memory, /memory open, /memory clear, /save <事实>
                     /hitl, /hitl on, /hitl off
                     /snapshot, /snapshot status, /snapshot clean, /restore <N>
                     /config, /plan <任务>, /team <任务>, /cancel, /exit
@@ -397,6 +411,29 @@ public final class TuiSessionController implements AutoCloseable {
         return output.replaceAll("\\u001B\\[[;\\d]*m", "").trim();
     }
 
+    static String formatMemoryOpenResult(MemoryManager memoryManager, String scope) {
+        String normalizedScope = normalizeMemoryOpenScope(scope);
+        if (normalizedScope == null) {
+            return "/memory open only supports project or global";
+        }
+        Path file = memoryManager.ensureMemoryFile(normalizedScope);
+        return "Memory file (" + normalizedScope + "): " + file
+                + "\nEdit this Markdown file directly; it will be read on the next turn.";
+    }
+
+    private static String normalizeMemoryOpenScope(String scope) {
+        if (scope == null || scope.isBlank()) {
+            return "project";
+        }
+        if ("project".equalsIgnoreCase(scope)) {
+            return "project";
+        }
+        if ("global".equalsIgnoreCase(scope) || "user".equalsIgnoreCase(scope)) {
+            return "global";
+        }
+        return null;
+    }
+
     private static String formatMemoryEntries(List<MemoryEntry> entries) {
         if (entries == null || entries.isEmpty()) {
             return "没有匹配的长期记忆。";
@@ -405,7 +442,7 @@ public final class TuiSessionController implements AutoCloseable {
         for (MemoryEntry entry : entries) {
             sb.append("- ")
                     .append(entry.getId())
-                    .append(" [").append(LongTermMemory.scopeOf(entry)).append("] ")
+                    .append(" [").append(entry.getMetadata().getOrDefault("scope", "project")).append("] ")
                     .append(entry.getContent())
                     .append("\n");
         }

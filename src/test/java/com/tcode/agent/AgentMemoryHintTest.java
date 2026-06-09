@@ -32,15 +32,15 @@ class AgentMemoryHintTest {
             Agent agent = new Agent(llmClient);
 
             agent.run("打开 https://www.yuque.com/itwanger/gykdzg 这个语雀文档");
-            assertEquals(0, agent.getMemoryManager().getLongTermMemory().size());
+            assertEquals(0, agent.getMemoryManager().listLongTerm().size());
 
             agent.run("你可以直接复用我已经登录的Chrome，记一下");
 
-            List<String> facts = agent.getMemoryManager().getLongTermMemory().getAll().stream()
+            List<String> facts = agent.getMemoryManager().listLongTerm().stream()
                     .map(MemoryEntry::getContent)
                     .toList();
             assertTrue(facts.contains("访问 yuque.com（语雀）时优先复用用户已登录的 Chrome 登录态。"));
-            assertEquals("global", agent.getMemoryManager().getLongTermMemory().getAll().get(0).getMetadata().get("scope"));
+            assertEquals("global", agent.getMemoryManager().listLongTerm().get(0).getMetadata().get("scope"));
         } finally {
             if (oldMemoryDir == null) {
                 System.clearProperty("tcode.memory.dir");

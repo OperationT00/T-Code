@@ -7,7 +7,6 @@ import com.tcode.hitl.ApprovalPolicy;
 import com.tcode.hitl.HitlToolRegistry;
 import com.tcode.hitl.SwitchableHitlHandler;
 import com.tcode.mcp.McpServerManager;
-import com.tcode.memory.LongTermMemory;
 import com.tcode.memory.MemoryEntry;
 import com.tcode.memory.MemoryManager;
 import com.tcode.policy.AuditLog;
@@ -65,12 +64,17 @@ final class CliControlCommandDispatcher {
             }
             case MEMORY_LIST -> {
                 context.ui().println(formatMemoryEntries(
-                        "📋 长期记忆列表", context.memoryManager().listLongTerm()));
+                        "📋 长期记忆列表", context.memoryManager().listLongTerm(),
+                        context.memoryManager()));
                 context.ui().println();
                 yield true;
             }
             case MEMORY_SEARCH -> {
                 handleMemorySearch(command.payload(), context);
+                yield true;
+            }
+            case MEMORY_OPEN -> {
+                handleMemoryOpen(command.payload(), context);
                 yield true;
             }
             case MEMORY_DELETE -> {
@@ -205,6 +209,7 @@ final class CliControlCommandDispatcher {
         out.println(memoryManager.getSystemStatus());
         out.println("   当前项目作用域: " + memoryManager.getCurrentProject());
         out.println("   /memory list - 查看长期记忆");
+        out.println("   /memory open [project|global] - 打开/定位 Markdown 记忆文件");
         out.println("   /memory search <关键词> - 搜索当前项目可见长期记忆");
         out.println("   /memory delete <id> - 删除单条长期记忆");
         out.println("   /memory clear - 清空长期记忆");
@@ -218,8 +223,21 @@ final class CliControlCommandDispatcher {
             return;
         }
         context.ui().println(formatMemoryEntries(
-                "🔎 长期记忆搜索: " + payload, context.memoryManager().searchLongTerm(payload, 20)));
+                "🔎 长期记忆搜索: " + payload, context.memoryManager().searchLongTerm(payload, 20),
+                context.memoryManager()));
         context.ui().println();
+    }
+
+    private static void handleMemoryOpen(String payload, Context context) {
+        String scope = payload == null || payload.isBlank() ? "project" : payload.trim();
+        if (!scope.equalsIgnoreCase("project") && !scope.equalsIgnoreCase("global") && !scope.equalsIgnoreCase("user")) {
+            context.ui().println("❌ /memory open 只支持 project 或 global\n");
+            return;
+        }
+        String normalizedScope = scope.equalsIgnoreCase("user") ? "global" : scope.toLowerCase();
+        Path file = context.memoryManager().ensureMemoryFile(normalizedScope);
+        context.ui().println("📝 Memory file (" + normalizedScope + "): " + file);
+        context.ui().println("   可直接编辑这个 Markdown 文件；保存后下一轮会读取。\n");
     }
 
     private static void handleMemoryDelete(String payload, Context context) {
@@ -369,12 +387,24 @@ final class CliControlCommandDispatcher {
     }
 
     private static String formatMemoryEntries(String title, List<MemoryEntry> entries) {
+        return formatMemoryEntries(title, entries, null);
+    }
+
+    private static String formatMemoryEntries(String title, List<MemoryEntry> entries, MemoryManager memoryManager) {
         StringBuilder sb = new StringBuilder(title).append("：\n");
+        if (memoryManager != null) {
+            sb.append("  project file: ")
+                    .append(memoryManager.getMarkdownStore().projectFile())
+                    .append("\n")
+                    .append("  user file: ")
+                    .append(memoryManager.getMarkdownStore().globalFile())
+                    .append("\n");
+        }
         if (entries == null || entries.isEmpty()) {
             return sb.append("📭 没有匹配的长期记忆。").toString();
         }
         for (MemoryEntry entry : entries) {
-            String scope = LongTermMemory.scopeOf(entry);
+            String scope = entry.getMetadata().getOrDefault("scope", "project");
             String project = entry.getMetadata().get("project");
             sb.append("- ")
                     .append(entry.getId())

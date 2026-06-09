@@ -19,8 +19,7 @@ For the primary entry point, see `/AGENTS.md`.
 
 | 数据 | 默认路径 | 覆盖方式 |
 |------|----------|----------|
-| 长期记忆 | `~/.tcode/memory/long_term_memory.json` | `-Dtcode.memory.dir` |
-| RAG 索引 | `~/.tcode/rag/codebase.db` | `-Dtcode.rag.dir` |
+| 长期记忆 | 项目级 `.tcode/memory/project.md`；用户级 `~/.tcode/memory/user.md` | `-Dtcode.memory.dir` 覆盖用户级目录 |
 | 审计日志 | `~/.tcode/audit/audit-YYYY-MM-DD.jsonl` | `TCODE_AUDIT_DIR` / `-Dtcode.audit.dir` |
 | Side-Git 快照 | `~/.tcode/snapshots/<project_hash>/<worktree_hash>/.git` | `TCODE_SNAPSHOT_DIR` / `-Dtcode.snapshot.dir` |
 | 后台任务 | `~/.tcode/tasks/tasks.db` | — |
@@ -28,10 +27,6 @@ For the primary entry point, see `/AGENTS.md`.
 ### Snapshot Config
 
 系统属性 > 环境变量 > 默认值：`tcode.snapshot.enabled`(true) / `tcode.snapshot.max`(50) / `tcode.snapshot.excludes`(.git,.tcode/snapshots,target,node_modules,dist,.idea,*.class,*.jar) / `tcode.snapshot.dir`(~/.tcode/snapshots)
-
-### Embedding Config
-
-环境变量 > 系统属性 > 默认值：`EMBEDDING_PROVIDER`(ollama) / `EMBEDDING_MODEL`(nomic-embed-text:latest) / `EMBEDDING_BASE_URL`(http://localhost:11434)
 
 ### Log Config
 
@@ -85,14 +80,16 @@ scheme 白名单(http/https) / 主机黑名单(localhost/loopback/link-local/sit
 
 - `ContextProfile` 计算 short/balanced/long 模式
 - GLM-5.1: 200k / DeepSeek V4: 1M / StepFun: 256k / Kimi K2.6: 256k
-- long 模式(>=100k)：跳过 Memory 自动摘要，search_code 语义辅助 topK=20，MCP resources 自动索引；精确代码定位仍优先实时 glob/grep/read
+- long mode (>=100k): current conversation compaction stays in ContextManager; code navigation uses realtime glob/grep/read plus LSP diagnostics
 - prompt caching：能力声明 + cached usage 解析
 
 ### Memory System
 
 - 两道压缩：
-  1. `ContextCompressor` 压缩 shortTermMemory
-  2. `ConversationHistoryCompactor` 压缩 conversationHistory（真正发给 LLM 的消息）
+- 当前会话上下文由 `ContextManager` 管理，`ConversationHistoryCompactor` 在接近 window 上限时压缩早期消息；长工具结果进入上下文前会按工具名保留头尾并摘要截断；`/context` 输出消息数、估算 token、工具摘要次数和历史压缩次数。
+- 长期记忆只通过 `/save` 或用户明确要求保存，落盘为 Markdown：项目级 `.tcode/memory/project.md`，用户级 `~/.tcode/memory/user.md`。
+- 长期记忆只保存跨会话稳定事实，不保存临时指令；默认 project，跨项目通用偏好才用 global。
+- 长期记忆管理命令：`/memory list`、`/memory open [project|global]`、`/memory search <keyword>`、`/memory delete <id>`、`/memory clear`；list/search 输出会展示 project/user Markdown 文件路径和行号 id。
 - 第二道压缩切割在 user message 边界，保留最近 3 个 user 起算的尾部
 - 三条路径(ReAct/Plan/SubAgent)都接入第二道压缩
 - 长期记忆只通过 `/save` 或用户明确要求保存
@@ -173,7 +170,6 @@ scheme 白名单(http/https) / 主机黑名单(localhost/loopback/link-local/sit
 - 普通任务和斜杠命令提交后都会以 `>` 暗色整行块回写原始输入，避免 JLine accept 后清掉编辑行导致结果区看不到刚执行的命令
 - InlineRenderer 不使用独立 JLine `Display.update()` 维护 thinking 临时区；真实终端验证发现独立 Display 会在 transcript/status 输出后从错误位置向上清屏。当前实现用固定高度 live 区重写自身行，content/tool 边界先清理 live 区再追加 transcript。
 - 交互期输出优先走 `Renderer.stream()`；`Main`、`PlanExecuteAgent`、`Planner`、`AgentOrchestrator` 都可接收同一个 renderer 输出流，避免绕过 inline renderer 直接写 stdout
-- `CodeIndex` 通过 `ProgressListener` 上报索引开始 / 文件数量 / 进度 / 完成或失败，`/index` 绑定当前 renderer 输出流；内部异常细节写 logger
 
 ### LSP Diagnostics (Phase 17)
 
@@ -233,7 +229,7 @@ LLM 生成计划 JSON / 简单任务最小计划 / 重编号 task_1..N / 依赖�
 DAG 拓扑排序 / 可执行任务判定 / 进度可视化
 
 ### ToolRegistry.java
-11 个核心内置工具 + MCP 动态工具 / executeTools() 并行入口 / ToolInvocation / ToolExecutionResult。代码理解默认路径是 `glob_files` / `grep_code` / `read_file` 现用现查，`search_code` 保留为 RAG 语义辅助。
+???????????????Multi-Agent ???HITL ?????????MCP ???????????????? Skill ???
 
 ### MCP Package
 McpServerManager / McpClient / JsonRpcClient / StdioTransport / StreamableHttpTransport / McpSchemaSanitizer / resources/ / mention/ / notifications/
@@ -264,10 +260,6 @@ GLM_API_KEY=your_api_key_here
 # MOONSHOT_API_KEY=your_moonshot_api_key_here
 # KIMI_MODEL=kimi-k2.6
 # KIMI_BASE_URL=https://api.moonshot.ai/v1
-EMBEDDING_PROVIDER=ollama
-EMBEDDING_MODEL=nomic-embed-text:latest
-EMBEDDING_BASE_URL=http://localhost:11434
-# EMBEDDING_API_KEY=your_api_key_here
 # TCODE_LOG_LEVEL=INFO
 # TCODE_LOG_DIR=/Users/yourname/.tcode/logs
 # TCODE_LOG_MAX_HISTORY=7
@@ -285,8 +277,8 @@ EMBEDDING_BASE_URL=http://localhost:11434
 
 ## Test Coverage Summary
 
-测试覆盖偏向：解析、计划结构、RAG 核心、Multi-Agent 编排、HITL 策略、策略层拦截、MCP 协议、资源输入层、长上下文策略与 Skill 加载。
+???????????????Multi-Agent ???HITL ?????????MCP ???????????????? Skill ???
 
-不覆盖：真实 LLM 联调、真实 Embedding API、真实 MCP server 联调、终端完整手工体验。
+?????? LLM ????? MCP server ????????????
 
-完整测试类列表：CliCommandParserTest / MainBrowserCommandTest / PlanReviewInputParserTest / MainInputNormalizationTest / ExecutionPlanTest / MemoryEntryTest / ConversationMemoryTest / LongTermMemoryTest / MemoryRetrieverTest / MemoryManagerTest / ExplicitMemoryHintsTest / ContextProfileTest / PlanExecuteAgentTest / AgentMemoryHintTest / AgentRoleTest / AgentMessageTest / AgentOrchestratorTest / EmbeddingClientTest / SearchResultTest / NetworkPolicyTest / HtmlExtractorTest / WebFetcherTest / SearchProviderFactoryTest / ZhipuSearchProviderTest / VectorStoreTest / CodeChunkerTest / CodeAnalyzerTest / CodeIndexTest / ApprovalPolicyTest / ApprovalResultTest / HitlToolRegistryTest / TerminalHitlHandlerTest / ToolRegistryTest / BrowserSessionTest / BrowserConnectivityCheckTest / SensitivePagePolicyTest / BrowserGuardTest / McpSchemaSanitizerTest / McpConfigLoaderTest / JsonRpcClientTest / McpToolBridgeTest / McpResourceCacheTest / AtMentionParserTest / AtMentionExpanderTest / AtMentionCompleterTest / NotificationRouterTest / PathGuardTest / CommandGuardTest / AuditLogTest / SkillFrontmatterParserTest / SkillRegistryTest / SkillStateStoreTest / SkillBuiltinExtractorTest / SkillContextBufferTest / SkillIndexFormatterTest / LoadSkillToolTest / SkillCommandHandlerTest
+完整测试类列表：CliCommandParserTest / MainBrowserCommandTest / PlanReviewInputParserTest / MainInputNormalizationTest / ExecutionPlanTest / MemoryEntryTest / MarkdownMemoryStoreTest / MemoryManagerTest / ExplicitMemoryHintsTest / ContextProfileTest / PlanExecuteAgentTest / AgentMemoryHintTest / AgentRoleTest / AgentMessageTest / AgentOrchestratorTest / SearchResultTest / NetworkPolicyTest / HtmlExtractorTest / WebFetcherTest / SearchProviderFactoryTest / ZhipuSearchProviderTest / ApprovalPolicyTest / ApprovalResultTest / HitlToolRegistryTest / TerminalHitlHandlerTest / ToolRegistryTest / BrowserSessionTest / BrowserConnectivityCheckTest / SensitivePagePolicyTest / BrowserGuardTest / McpSchemaSanitizerTest / McpConfigLoaderTest / JsonRpcClientTest / McpToolBridgeTest / McpResourceCacheTest / AtMentionParserTest / AtMentionExpanderTest / AtMentionCompleterTest / NotificationRouterTest / PathGuardTest / CommandGuardTest / AuditLogTest / SkillFrontmatterParserTest / SkillRegistryTest / SkillStateStoreTest / SkillBuiltinExtractorTest / SkillContextBufferTest / SkillIndexFormatterTest / LoadSkillToolTest / SkillCommandHandlerTest

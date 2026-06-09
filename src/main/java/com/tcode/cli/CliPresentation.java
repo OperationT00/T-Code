@@ -78,15 +78,12 @@ final class CliPresentation {
                 new SlashCommandHint("/snapshot status", "/snapshot status", "查看 Side-Git 快照状态"),
                 new SlashCommandHint("/snapshot clean", "/snapshot clean", "清理当前项目 Side-Git 快照"),
                 new SlashCommandHint("/restore ", "/restore <N>", "恢复到最近第 N 个 pre-turn 快照"),
-                new SlashCommandHint("/index", "/index", "索引当前代码库"),
-                new SlashCommandHint("/index ", "/index [路径]", "索引指定路径代码库"),
-                new SlashCommandHint("/search ", "/search <查询>", "语义检索代码（RAG 辅助）"),
-                new SlashCommandHint("/graph ", "/graph <类名>", "查看代码关系图谱"),
                 new SlashCommandHint("/clear", "/clear", "清空当前对话历史"),
                 new SlashCommandHint("/history clear", "/history clear", "清空本机输入历史"),
                 new SlashCommandHint("/context", "/context", "查看上下文和记忆状态"),
                 new SlashCommandHint("/memory", "/memory", "查看记忆状态"),
                 new SlashCommandHint("/memory list", "/memory list", "查看长期记忆列表"),
+                new SlashCommandHint("/memory open ", "/memory open [project|global]", "打开/定位 Markdown 记忆文件"),
                 new SlashCommandHint("/memory search ", "/memory search <关键词>", "搜索当前项目可见长期记忆"),
                 new SlashCommandHint("/memory delete ", "/memory delete <id>", "删除单条长期记忆"),
                 new SlashCommandHint("/memory clear", "/memory clear", "清空长期记忆"),
@@ -167,7 +164,7 @@ final class CliPresentation {
                 ? "0 skills"
                 : info.skillsEnabled() + "/" + info.skillsTotal() + " skills";
         String ready = "Model " + model + " (" + provider + ")";
-        String capabilities = "ReAct · Plan · MCP · Browser · Tools · Memory · RAG";
+        String capabilities = "ReAct ? Plan ? MCP ? Browser ? Tools ? Memory";
         String state = mcp + " · " + skills + " · ReAct";
         List<String> lines = new ArrayList<>(List.of(
                 "   " + AnsiStyle.section("██████████") + "    " + AnsiStyle.emphasis("t-code") + "  " + AnsiStyle.subtle("v" + VERSION),

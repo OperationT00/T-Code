@@ -5,7 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tcode.llm.LlmClient;
 import com.tcode.llm.LlmTraceLogger;
 import com.tcode.lsp.LspDiagnosticReport;
-import com.tcode.memory.ConversationHistoryCompactor;
+import com.tcode.context.ConversationHistoryCompactor;
+import com.tcode.context.ContextManager;
 import com.tcode.context.ContextProfile;
 import com.tcode.prompt.PromptAssembler;
 import com.tcode.prompt.PromptContext;
@@ -218,7 +219,9 @@ public class SubAgent {
 
                     List<ToolExecutionResult> toolResults = executeToolCalls(response.toolCalls());
                     for (ToolExecutionResult toolResult : toolResults) {
-                        conversationHistory.add(LlmClient.Message.tool(toolResult.id(), toolResult.result()));
+                        conversationHistory.add(LlmClient.Message.tool(
+                                toolResult.id(),
+                                ContextManager.summarizeToolResult(toolResult.name(), toolResult.result())));
                     }
                     appendImageToolMessages(toolResults);
                     continue;
@@ -370,7 +373,6 @@ public class SubAgent {
             case "list_dir" -> "📂 列出 " + count + " 个目录";
             case "execute_command" -> "⚡ 执行 " + count + " 条命令";
             case "create_project" -> "🏗️ 创建 " + count + " 个项目";
-            case "search_code" -> "🔍 搜索代码 " + count + " 次";
             case "web_search" -> "🌐 联网搜索 " + count + " 次";
             case "web_fetch" -> "📰 抓取 " + count + " 个网页";
             case "save_memory" -> "💾 保存长期记忆 " + count + " 条";
@@ -395,7 +397,7 @@ public class SubAgent {
                 case "read_file", "write_file", "list_dir" -> "path";
                 case "execute_command" -> "command";
                 case "create_project" -> "name";
-                case "search_code", "web_search" -> "query";
+                case "web_search" -> "query";
                 case "web_fetch" -> "url";
                 case "save_memory" -> "fact";
                 default -> null;

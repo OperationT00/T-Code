@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * t-code v1.0.0 - Terminal-First Agent IDE
- * 支持 ReAct、Plan-and-Execute、Memory、RAG、Multi-Agent、HITL、并行工具调用、多模型切换、MCP、CDP 会话复用
+ * 支持 ReAct、Plan-and-Execute、Memory、Multi-Agent、HITL、并行工具调用、多模型切换、MCP、CDP 会话复用
  */
 public class Main {
     public static void main(String[] args) {
@@ -144,9 +144,6 @@ public class Main {
                             reactAgent.getToolRegistry(),
                             () -> renderer.updateStatus(CliStartupStatus.statusInfo(
                                     llmClientRef.get(), hitlHandler, "idle", mcpServerManager, skillRegistry)));
-            CliCodeSearchCommandDispatcher.Context codeSearchCommandContext =
-                    new CliCodeSearchCommandDispatcher.Context(
-                            ui, reactAgent.getToolRegistry(), reactAgent.getMemoryManager());
             CliModelCommandDispatcher.Context modelCommandContext =
                     new CliModelCommandDispatcher.Context(
                             ui,
@@ -200,9 +197,6 @@ public class Main {
                     submittedInputRendered = true;
                 }
                 if (CliControlCommandDispatcher.dispatch(command, controlCommandContext)) {
-                    continue;
-                }
-                if (CliCodeSearchCommandDispatcher.dispatch(command, codeSearchCommandContext)) {
                     continue;
                 }
                 CliModelCommandDispatcher.Result modelCommandResult =

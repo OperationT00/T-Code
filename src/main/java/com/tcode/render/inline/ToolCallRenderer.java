@@ -103,7 +103,6 @@ public final class ToolCallRenderer {
             case "list_dir" -> "📂 列出 " + count + " 个目录";
             case "execute_command" -> "⚡ 执行 " + count + " 条命令";
             case "create_project" -> "🏗️ 创建 " + count + " 个项目";
-            case "search_code" -> "🔍 搜索代码 " + count + " 次";
             case "web_search" -> "🌐 联网搜索 " + count + " 次";
             case "web_fetch" -> "📰 抓取 " + count + " 个网页";
             case "save_memory" -> "💾 保存长期记忆 " + count + " 条";
@@ -126,7 +125,6 @@ public final class ToolCallRenderer {
         return switch (toolName) {
             case "web_search" -> "🌐 WebSearch(\"" + detail + "\")";
             case "web_fetch" -> "📰 WebFetch(" + compactUrl(detail) + ")";
-            case "search_code" -> "🔍 SearchCode(\"" + detail + "\")";
             case "read_file" -> "📖 ReadFile(" + detail + ")";
             case "list_dir" -> "📂 ListDir(" + detail + ")";
             case "execute_command" -> "⚡ Shell(" + detail + ")";
@@ -149,7 +147,7 @@ public final class ToolCallRenderer {
                 case "read_file", "write_file", "list_dir" -> "path";
                 case "execute_command" -> "command";
                 case "create_project" -> "name";
-                case "search_code", "web_search" -> "query";
+                case "web_search" -> "query";
                 case "web_fetch" -> "url";
                 case "save_memory" -> "fact";
                 default -> null;

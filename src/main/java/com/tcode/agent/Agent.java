@@ -2,10 +2,10 @@ package com.tcode.agent;
 
 import com.tcode.llm.LlmClient;
 import com.tcode.llm.LlmTraceLogger;
+import com.tcode.context.ContextManager;
 import com.tcode.context.ContextProfile;
 import com.tcode.context.TokenUsageFormatter;
 import com.tcode.lsp.LspDiagnosticReport;
-import com.tcode.memory.ConversationHistoryCompactor;
 import com.tcode.memory.ExplicitMemoryHints;
 import com.tcode.memory.MemoryManager;
 import com.tcode.prompt.PromptAssembler;
@@ -45,9 +45,8 @@ public class Agent {
     private static final Logger log = LoggerFactory.getLogger(Agent.class);
     private LlmClient llmClient;
     private final ToolRegistry toolRegistry;
-    private final List<LlmClient.Message> conversationHistory;
+    private final ContextManager contextManager;
     private final MemoryManager memoryManager;
-    private final ConversationHistoryCompactor historyCompactor;
     private Supplier<String> externalContextSupplier = () -> "";
     private SkillRegistry skillRegistry;
     private SkillContextBuffer skillContextBuffer;
@@ -62,19 +61,19 @@ public class Agent {
     public Agent(LlmClient llmClient, ToolRegistry toolRegistry) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
-        this.conversationHistory = new ArrayList<>();
         this.memoryManager = new MemoryManager(llmClient);
-        this.historyCompactor = new ConversationHistoryCompactor(llmClient);
+        this.contextManager = new ContextManager(llmClient, memoryManager.getContextProfile());
         this.toolRegistry.setContextProfile(memoryManager.getContextProfile());
         this.memoryManager.setProjectPath(this.toolRegistry.getProjectPath());
         this.toolRegistry.setScopedMemorySaver(memoryManager::storeFact);
-        conversationHistory.add(LlmClient.Message.system(buildSystemPrompt("")));
+        contextManager.setSystemPrompt(buildSystemPrompt(""));
     }
 
     public void setLlmClient(LlmClient llmClient) {
         this.llmClient = llmClient;
         this.memoryManager.setLlmClient(llmClient);
-        this.historyCompactor.setLlmClient(llmClient);
+        this.contextManager.setLlmClient(llmClient);
+        this.contextManager.setContextProfile(memoryManager.getContextProfile());
         this.toolRegistry.setContextProfile(memoryManager.getContextProfile());
     }
 
@@ -119,8 +118,6 @@ public class Agent {
     public String run(String userInput) {
         log.info("ReAct run started: inputLength={}", userInput == null ? 0 : userInput.length());
         pruneHistoricalImagePayloads();
-        // 存入短期记忆
-        memoryManager.addUserMessage(userInput);
         storeExplicitBrowserMemoryHint(userInput);
 
         // 检索相关长期记忆，注入到 system prompt
@@ -130,7 +127,7 @@ public class Agent {
 
         // 添加用户输入到历史（如有 skill body 注入，前置到原文之前）
         String userMessageContent = prependSkillBodies(userInput);
-        conversationHistory.add(ImageReferenceParser.userMessage(
+        contextManager.addUserMessage(ImageReferenceParser.userMessage(
                 userMessageContent,
                 Path.of(toolRegistry.getProjectPath())));
         StringBuilder reasoningTranscript = new StringBuilder();
@@ -148,9 +145,7 @@ public class Agent {
                 pushStatus(budget, startNanos, "idle");
                 return "⏹️ 已取消当前任务。";
             }
-            // 调 LLM 前评估 conversationHistory 是否接近 window 上限；超阈值就把早期消息压缩成摘要。
-            // 这是与第 3 期 Memory 短期记忆压缩并行的另一道压缩——后者只压 shortTermMemory，
-            // 真正决定下一轮 LLM input token 的是这里。
+            // 调 LLM 前评估会话历史是否接近 window 上限；超阈值就把早期消息压缩成摘要。
             injectPendingLspDiagnostics();
             maybeCompactHistory();
             AgentBudget.ExitReason exitReason = budget.check();
@@ -171,7 +166,7 @@ public class Agent {
                 streamRenderer.beginThinking();
                 // 调用 LLM
                 LlmClient.ChatResponse response = llmClient.chat(
-                        conversationHistory,
+                        contextManager.mutableMessages(),
                         toolDefinitions,
                         streamRenderer
                 );
@@ -192,7 +187,7 @@ public class Agent {
                     log.info("LLM requested {} tool call(s) in iteration {}", response.toolCalls().size(), iteration);
                     budget.recordToolCalls(response.toolCalls());
                     // 添加助手消息（包含工具调用）
-                    conversationHistory.add(LlmClient.Message.assistant(
+                    contextManager.addAssistantMessage(LlmClient.Message.assistant(
                             response.reasoningContent(),
                             response.content(),
                             response.toolCalls()
@@ -206,8 +201,7 @@ public class Agent {
 
                     List<ToolExecutionResult> toolResults = executeToolCalls(response.toolCalls(), iteration);
                     for (ToolExecutionResult toolResult : toolResults) {
-                        memoryManager.addToolResult(toolResult.name(), toolResult.result());
-                        conversationHistory.add(LlmClient.Message.tool(toolResult.id(), toolResult.result()));
+                        contextManager.addToolMessage(toolResult.id(), toolResult.name(), toolResult.result());
                     }
                     appendImageToolMessages(toolResults);
 
@@ -217,10 +211,7 @@ public class Agent {
 
                 // 没有工具调用，直接返回结果
                 appendReasoning(reasoningTranscript, response.reasoningContent());
-                conversationHistory.add(LlmClient.Message.assistant(response.content()));
-
-                // 存入记忆
-                memoryManager.addAssistantMessage(response.content());
+                contextManager.addAssistantMessage(response.content());
 
                 // 记录 token 使用
                 memoryManager.recordTokenUsage(budget.totalInputTokens(), budget.totalOutputTokens(), budget.totalCachedInputTokens());
@@ -253,19 +244,14 @@ public class Agent {
      * 清空对话历史（保留系统提示），不影响长期记忆
      */
     public void clearHistory() {
-        LlmClient.Message systemMsg = conversationHistory.get(0);
-        conversationHistory.clear();
-        conversationHistory.add(systemMsg);
-
-        // 清空短期记忆
-        memoryManager.clearShortTerm();
+        contextManager.clearKeepingSystem();
     }
 
     /**
-     * 将记忆上下文注入到 system prompt 中（替换 conversationHistory[0]）
+     * 将记忆上下文注入到 system prompt 中（替换当前 system prompt）
      */
     private void updateSystemPromptWithMemory(String memoryContext) {
-        conversationHistory.set(0, LlmClient.Message.system(buildSystemPrompt(memoryContext)));
+        contextManager.setSystemPrompt(buildSystemPrompt(memoryContext));
     }
 
     private String buildSystemPrompt(String memoryContext) {
@@ -277,13 +263,8 @@ public class Agent {
     }
 
     private void maybeCompactHistory() {
-        if (historyCompactor == null) return;
-        int trigger = memoryManager.getContextProfile().compressionTriggerTokens();
         try {
-            boolean compacted = historyCompactor.compactIfNeeded(conversationHistory, trigger);
-            if (compacted) {
-                renderer().stream().println("📦 上下文接近窗口上限，已把早期对话压缩为摘要后继续。");
-            }
+            contextManager.compactIfNeeded(renderer().stream());
         } catch (Exception e) {
             log.warn("conversationHistory compaction failed", e);
         }
@@ -292,13 +273,13 @@ public class Agent {
     private void pruneHistoricalImagePayloads() {
         int messageCount = 0;
         int imageCount = 0;
-        for (int i = 0; i < conversationHistory.size(); i++) {
-            LlmClient.Message message = conversationHistory.get(i);
+        for (int i = 0; i < contextManager.size(); i++) {
+            LlmClient.Message message = contextManager.get(i);
             int images = message.imagePartCount();
             if (images <= 0) {
                 continue;
             }
-            conversationHistory.set(i, message.withoutImageContent());
+            contextManager.set(i, message.withoutImageContent());
             messageCount++;
             imageCount += images;
         }
@@ -313,7 +294,7 @@ public class Agent {
         if (report == null || report.isEmpty()) {
             return;
         }
-        conversationHistory.add(LlmClient.Message.user(report.promptText()));
+        contextManager.addUserMessage(report.promptText());
         renderer().stream().println(report.displayText());
         log.info("Injected LSP diagnostics into ReAct conversation");
     }
@@ -354,7 +335,7 @@ public class Agent {
      * 获取对话历史（用于调试）
      */
     public List<LlmClient.Message> getConversationHistory() {
-        return new ArrayList<>(conversationHistory);
+        return contextManager.messages();
     }
 
     /**
@@ -365,7 +346,7 @@ public class Agent {
     }
 
     private void storeExplicitBrowserMemoryHint(String userInput) {
-        List<String> recentTexts = conversationHistory.stream()
+        List<String> recentTexts = contextManager.mutableMessages().stream()
                 .map(LlmClient.Message::content)
                 .filter(content -> content != null && !content.isBlank())
                 .toList();
@@ -383,7 +364,7 @@ public class Agent {
         // 分类估算 token 占用
         int systemTokens = 0, userTokens = 0, assistantTokens = 0, toolTokens = 0;
         int systemCount = 0, userCount = 0, assistantCount = 0, toolCount = 0;
-        for (LlmClient.Message msg : conversationHistory) {
+        for (LlmClient.Message msg : contextManager.mutableMessages()) {
             int t = com.tcode.memory.TokenBudget.estimateMessagesTokens(java.util.List.of(msg));
             switch (msg.role()) {
                 case "system" -> { systemTokens += t; systemCount++; }
@@ -420,6 +401,24 @@ public class Agent {
                 .append(profile.mcpResourceIndexEnabled() ? "开启" : "关闭（window 不足 32k）")
                 .append("\n");
         sb.append("  prompt cache: ").append(profile.promptCacheMode()).append("\n");
+        sb.append("\n  Context health:\n");
+        sb.append(String.format("    Messages:             %8d  (system=%d, user=%d, assistant=%d, tool=%d)%n",
+                systemCount + userCount + assistantCount + toolCount,
+                systemCount,
+                userCount,
+                assistantCount,
+                toolCount));
+        sb.append(String.format("    Estimated tokens:     %8s  (messages=%s, tools=%s)%n",
+                formatTokens(total),
+                formatTokens(messagesTokens),
+                formatTokens(toolsSchemaTokens)));
+        sb.append(String.format("    Tool summaries:       %8d  (saved %s chars)%n",
+                contextManager.summarizedToolResults(),
+                formatTokens(Math.max(0,
+                        contextManager.summarizedToolResultOriginalChars()
+                                - contextManager.summarizedToolResultStoredChars()))));
+        sb.append(String.format("    History compactions:  %8d%n",
+                contextManager.historyCompactions()));
         sb.append("\n");
         sb.append(memoryManager.getSystemStatus());
         return sb.toString();
@@ -450,8 +449,8 @@ public class Agent {
         int imageParts = 0;
         int messages = 0;
         StringBuilder imageDetails = new StringBuilder();
-        for (int messageIndex = 0; messageIndex < conversationHistory.size(); messageIndex++) {
-            LlmClient.Message msg = conversationHistory.get(messageIndex);
+        for (int messageIndex = 0; messageIndex < contextManager.size(); messageIndex++) {
+            LlmClient.Message msg = contextManager.get(messageIndex);
             messages++;
             int tokens = com.tcode.memory.TokenBudget.estimateMessagesTokens(List.of(msg));
             imageParts += msg.imagePartCount();
@@ -701,7 +700,7 @@ public class Agent {
             List<LlmClient.ContentPart> parts = new ArrayList<>();
             parts.add(LlmClient.ContentPart.text("工具 " + result.name() + " 返回了图片内容，请结合上面的工具文本结果分析。"));
             parts.addAll(result.imageParts());
-            conversationHistory.add(LlmClient.Message.user(parts));
+            contextManager.addUserMessage(LlmClient.Message.user(parts));
         }
     }
 

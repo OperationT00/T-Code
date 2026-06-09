@@ -2,12 +2,13 @@ package com.tcode.agent;
 
 import com.tcode.llm.GLMClient;
 import com.tcode.llm.LlmClient;
-import com.tcode.memory.LongTermMemory;
 import com.tcode.memory.MemoryManager;
 import com.tcode.plan.ExecutionPlan;
 import com.tcode.plan.Planner;
 import com.tcode.plan.Task;
 import com.tcode.tool.ToolRegistry;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,9 +30,25 @@ class PlanExecuteAgentTest {
 
     @TempDir
     Path tempDir;
+    private String oldMemoryDir;
+
+    @BeforeEach
+    void isolateMemoryDir() {
+        oldMemoryDir = System.getProperty("tcode.memory.dir");
+        System.setProperty("tcode.memory.dir", tempDir.resolve("global-memory").toString());
+    }
+
+    @AfterEach
+    void restoreMemoryDir() {
+        if (oldMemoryDir == null) {
+            System.clearProperty("tcode.memory.dir");
+        } else {
+            System.setProperty("tcode.memory.dir", oldMemoryDir);
+        }
+    }
 
     @Test
-    void shouldWritePlanExecutionArtifactsBackToShortTermMemoryOnly() throws Exception {
+    void shouldNotWritePlanExecutionArtifactsToLongTermMemory() throws Exception {
         Path sampleFile = Files.createFile(tempDir.resolve("sample.txt"));
         Files.writeString(sampleFile, "plan-memory-content");
 
@@ -55,9 +72,9 @@ class PlanExecuteAgentTest {
         MemoryManager memoryManager = new MemoryManager(
                 llmClient,
                 4096,
-                128000,
-                new LongTermMemory(tempDir.resolve("memory-store").toFile())
+                128000
         );
+        memoryManager.setProjectPath(tempDir.toString());
         ToolRegistry toolRegistry = new ToolRegistry();
         toolRegistry.setProjectPath(tempDir.toString());
         PlanExecuteAgent agent = new PlanExecuteAgent(
@@ -70,26 +87,17 @@ class PlanExecuteAgentTest {
 
         String result = agent.run("请读取测试文件并确认内容");
 
-        List<String> shortTermContents = memoryManager.getShortTermMemory().getAll().stream()
-                .map(entry -> entry.getContent())
-                .toList();
-
         assertTrue(result.contains("计划执行完成"));
-        assertTrue(shortTermContents.stream().anyMatch(content -> content.contains("请读取测试文件并确认内容")));
-        assertTrue(shortTermContents.stream().anyMatch(content -> content.contains("plan-memory-content")));
-        assertTrue(shortTermContents.stream().anyMatch(content -> content.contains("已读取并确认文件内容")));
-        assertEquals(0, memoryManager.getLongTermMemory().size());
+        assertTrue(memoryManager.listLongTerm().isEmpty());
     }
 
     @Test
     void shouldNotExtractFactsWhenPlanIsCanceled() throws Exception {
         StubGLMClient llmClient = new StubGLMClient(List.of());
-        LongTermMemory longTermMemory = new LongTermMemory(tempDir.resolve("memory-store-cancel").toFile());
         MemoryManager memoryManager = new MemoryManager(
                 llmClient,
                 4096,
-                128000,
-                longTermMemory
+                128000
         );
         PlanExecuteAgent agent = new PlanExecuteAgent(
                 llmClient,
@@ -102,7 +110,7 @@ class PlanExecuteAgentTest {
         String result = agent.run("列出当前目录的文件");
 
         assertEquals("⏹️ 已取消本次计划执行。", result);
-        assertEquals(0, longTermMemory.size());
+        assertTrue(memoryManager.listLongTerm().isEmpty());
     }
 
     @Test

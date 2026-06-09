@@ -34,8 +34,8 @@ class ApprovalPolicyTest {
     }
 
     @Test
-    void searchCodeDoesNotRequireApproval() {
-        assertFalse(ApprovalPolicy.requiresApproval("search_code"));
+    void grepCodeDoesNotRequireApproval() {
+        assertFalse(ApprovalPolicy.requiresApproval("grep_code"));
     }
 
     @Test

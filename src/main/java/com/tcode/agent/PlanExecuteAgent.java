@@ -5,7 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tcode.llm.LlmClient;
 import com.tcode.llm.LlmTraceLogger;
 import com.tcode.lsp.LspDiagnosticReport;
-import com.tcode.memory.ConversationHistoryCompactor;
+import com.tcode.context.ConversationHistoryCompactor;
+import com.tcode.context.ContextManager;
 import com.tcode.memory.MemoryManager;
 import com.tcode.plan.*;
 import com.tcode.prompt.PromptAssembler;
@@ -217,7 +218,6 @@ public class PlanExecuteAgent {
      */
     public String run(String userInput) {
         log.info("Plan run started: inputLength={}", userInput == null ? 0 : userInput.length());
-        memoryManager.addUserMessage(userInput);
         StreamState streamState = new StreamState();
         try {
             if (CancellationContext.isCancelled()) {
@@ -225,7 +225,6 @@ public class PlanExecuteAgent {
             }
             PlanRunOutcome outcome = runWithPlan(userInput, streamState);
             if (outcome.persistAssistantMessage() && outcome.result() != null && !outcome.result().isBlank()) {
-                memoryManager.addAssistantMessage("[计划结果] " + outcome.result());
             }
             if (streamState.hasStreamedOutput() && (outcome.result() == null || outcome.result().isBlank())) {
                 return "";
@@ -234,7 +233,6 @@ public class PlanExecuteAgent {
         } catch (Exception e) {
             log.error("Plan run failed", e);
             String errorMessage = "❌ 执行失败: " + e.getMessage();
-            memoryManager.addAssistantMessage(errorMessage);
             return errorMessage;
         }
     }
@@ -511,13 +509,11 @@ public class PlanExecuteAgent {
                 if (!allResults.isEmpty() && (response.content() == null || response.content().isBlank())) {
                     String toolOnlyResult = allResults.toString().trim();
                     if (!toolOnlyResult.isBlank()) {
-                        memoryManager.addAssistantMessage("[计划任务 " + task.getId() + "] " + toolOnlyResult);
                     }
                     streamRenderer.finish();
                     return TaskRunResult.of(toolOnlyResult, streamRenderer.hasStreamedOutput());
                 }
                 if (response.content() != null && !response.content().isBlank()) {
-                    memoryManager.addAssistantMessage("[计划任务 " + task.getId() + "] " + response.content());
                 }
                 streamRenderer.finish();
                 return TaskRunResult.of(response.content(), streamRenderer.hasStreamedOutput());
@@ -537,16 +533,16 @@ public class PlanExecuteAgent {
 
             List<ToolExecutionResult> toolResults = executeToolCalls(task.getId(), response.toolCalls());
             for (ToolExecutionResult toolResult : toolResults) {
-                memoryManager.addToolResult(toolResult.name(), toolResult.result());
                 allResults.append(toolResult.result()).append("\n");
-                messages.add(LlmClient.Message.tool(toolResult.id(), toolResult.result()));
+                messages.add(LlmClient.Message.tool(
+                        toolResult.id(),
+                        ContextManager.summarizeToolResult(toolResult.name(), toolResult.result())));
             }
             appendImageToolMessages(messages, toolResults);
         }
 
         String fallbackResult = allResults.toString().trim();
         if (!fallbackResult.isBlank()) {
-            memoryManager.addAssistantMessage("[计划任务 " + task.getId() + "] " + fallbackResult);
         }
         streamRenderer.finish();
         return TaskRunResult.of(fallbackResult, streamRenderer.hasStreamedOutput());
@@ -646,7 +642,6 @@ public class PlanExecuteAgent {
             case "list_dir" -> "📂 列出 " + count + " 个目录";
             case "execute_command" -> "⚡ 执行 " + count + " 条命令";
             case "create_project" -> "🏗️ 创建 " + count + " 个项目";
-            case "search_code" -> "🔍 搜索代码 " + count + " 次";
             case "web_search" -> "🌐 联网搜索 " + count + " 次";
             case "web_fetch" -> "📰 抓取 " + count + " 个网页";
             case "save_memory" -> "💾 保存长期记忆 " + count + " 条";
@@ -671,7 +666,7 @@ public class PlanExecuteAgent {
                 case "read_file", "write_file", "list_dir" -> "path";
                 case "execute_command" -> "command";
                 case "create_project" -> "name";
-                case "search_code", "web_search" -> "query";
+                case "web_search" -> "query";
                 case "web_fetch" -> "url";
                 case "save_memory" -> "fact";
                 default -> null;
