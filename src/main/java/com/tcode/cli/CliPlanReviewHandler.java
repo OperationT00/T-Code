@@ -2,6 +2,8 @@ package com.tcode.cli;
 
 import com.tcode.agent.PlanExecuteAgent;
 import com.tcode.plan.ExecutionPlan;
+import com.tcode.plan.PlanEstimate;
+import com.tcode.plan.PlanEstimator;
 import org.jline.reader.LineReader;
 import org.jline.terminal.Terminal;
 
@@ -18,7 +20,7 @@ final class CliPlanReviewHandler {
                                                      PrintStream out) {
         return (String goal, ExecutionPlan plan) -> {
             boolean expanded = false;
-            out.println(plan.summarize());
+            printPlanSummaryForReview(plan, out);
             out.println("📝 计划已生成。");
             out.println("   - 回车：按当前计划执行");
             out.println("   - Ctrl+O：展开完整计划");
@@ -79,6 +81,14 @@ final class CliPlanReviewHandler {
                 return mapDecision(PlanReviewInputParser.parse(decisionInput));
             }
         };
+    }
+
+    static void printPlanSummaryForReview(ExecutionPlan plan, PrintStream out) {
+        out.println(plan.summarize());
+        PlanEstimate estimate = plan.getEstimate() == null
+                ? new PlanEstimator().estimate(plan)
+                : plan.getEstimate();
+        out.println(estimate.formatForReview());
     }
 
     static PlanExecuteAgent.PlanReviewDecision mapDecision(PlanReviewInputParser.Decision decision) {

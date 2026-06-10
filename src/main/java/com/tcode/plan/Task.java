@@ -12,8 +12,10 @@ public class Task {
     private volatile TaskStatus status;
     private volatile String result;
     private volatile String error;
+    private volatile String expectedOutput;
     private final List<String> dependencies;  // 依赖的其他任务ID
     private final List<String> dependents;    // 依赖此任务的其他任务ID
+    private final List<String> resourceLocks;
     private volatile long startTime;
     private volatile long endTime;
 
@@ -41,6 +43,7 @@ public class Task {
         this.status = TaskStatus.PENDING;
         this.dependencies = new ArrayList<>();
         this.dependents = new ArrayList<>();
+        this.resourceLocks = new ArrayList<>();
     }
 
     public Task(String id, String description, TaskType type, List<String> dependencies) {
@@ -55,8 +58,10 @@ public class Task {
     public TaskStatus getStatus() { return status; }
     public String getResult() { return result; }
     public String getError() { return error; }
+    public String getExpectedOutput() { return expectedOutput; }
     public List<String> getDependencies() { return new ArrayList<>(dependencies); }
     public List<String> getDependents() { return new ArrayList<>(dependents); }
+    public List<String> getResourceLocks() { return new ArrayList<>(resourceLocks); }
     public long getStartTime() { return startTime; }
     public long getEndTime() { return endTime; }
 
@@ -64,6 +69,18 @@ public class Task {
     public void setStatus(TaskStatus status) { this.status = status; }
     public void setResult(String result) { this.result = result; }
     public void setError(String error) { this.error = error; }
+    public void setExpectedOutput(String expectedOutput) { this.expectedOutput = expectedOutput; }
+
+    public void setResourceLocks(List<String> locks) {
+        resourceLocks.clear();
+        if (locks != null) {
+            locks.stream()
+                    .filter(lock -> lock != null && !lock.isBlank())
+                    .map(String::trim)
+                    .distinct()
+                    .forEach(resourceLocks::add);
+        }
+    }
 
     public void addDependent(String taskId) {
         if (!dependents.contains(taskId)) {

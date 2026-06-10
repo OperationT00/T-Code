@@ -92,7 +92,10 @@ public class Planner {
             String typeStr = taskNode.path("type").asText();
             Task.TaskType type = parseTaskType(typeStr);
 
-            plan.addTask(new Task(newId, description, type));
+            Task task = new Task(newId, description, type);
+            task.setExpectedOutput(taskNode.path("expected_output").asText(null));
+            task.setResourceLocks(readStringArray(taskNode.path("resource_locks")));
+            plan.addTask(task);
         }
 
         // 第二遍：建立依赖和被依赖关系
@@ -120,6 +123,12 @@ public class Planner {
             throw new IOException("计划中存在循环依赖");
         }
 
+        PlanValidationResult validation = new PlanValidator().validate(plan);
+        if (validation.hasErrors()) {
+            throw new IOException("规划校验失败:\n" + validation.formatErrors());
+        }
+
+        plan.setEstimate(new PlanEstimator().estimate(plan));
         return plan;
     }
 
@@ -135,6 +144,20 @@ public class Planner {
             case "VERIFICATION" -> Task.TaskType.VERIFICATION;
             default -> Task.TaskType.ANALYSIS;
         };
+    }
+
+    private List<String> readStringArray(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        for (JsonNode value : node) {
+            String text = value.asText("");
+            if (!text.isBlank()) {
+                values.add(text.trim());
+            }
+        }
+        return values;
     }
 
     /**
@@ -214,6 +237,7 @@ public class Planner {
         if (!plan.computeExecutionOrder()) {
             throw new IllegalStateException("简单计划不应出现循环依赖");
         }
+        plan.setEstimate(new PlanEstimator().estimate(plan));
         return plan;
     }
 

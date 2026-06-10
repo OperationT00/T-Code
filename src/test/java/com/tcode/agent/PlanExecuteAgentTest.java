@@ -182,6 +182,49 @@ class PlanExecuteAgentTest {
                 "tool-call 前后的流式 content 不应被误标成任务结果: " + rendered);
     }
 
+    @Test
+    void splitsParallelTasksWhenResourceLocksConflict() {
+        StubGLMClient llmClient = new StubGLMClient(List.of());
+        PlanExecuteAgent agent = new PlanExecuteAgent(
+                llmClient,
+                new ToolRegistry(),
+                new StubPlanner(llmClient),
+                null,
+                (goal, plan) -> PlanExecuteAgent.PlanReviewDecision.execute()
+        );
+
+        Task first = new Task("task_1", "write file", Task.TaskType.FILE_WRITE);
+        first.setResourceLocks(List.of("file:src/App.java"));
+        Task second = new Task("task_2", "write same file", Task.TaskType.FILE_WRITE);
+        second.setResourceLocks(List.of("file:src/App.java"));
+        Task third = new Task("task_3", "read pom", Task.TaskType.FILE_READ);
+
+        List<List<Task>> batches = agent.splitIntoResourceSafeBatches(List.of(first, second, third));
+
+        assertEquals(List.of(first, third), batches.get(0));
+        assertEquals(List.of(second), batches.get(1));
+    }
+
+    @Test
+    void recordsPlanAndTaskTraceEvents() throws Exception {
+        StubGLMClient llmClient = new StubGLMClient(List.of(
+                new LlmClient.ChatResponse("assistant", "done", null, 10, 5)
+        ));
+        PlanExecuteAgent agent = new PlanExecuteAgent(
+                llmClient,
+                new ToolRegistry(),
+                new StubPlanner(llmClient),
+                null,
+                (goal, plan) -> PlanExecuteAgent.PlanReviewDecision.execute()
+        );
+
+        agent.run("read file");
+
+        assertTrue(agent.getLastTrace().events().stream().anyMatch(event -> event.type().equals("plan.created")));
+        assertTrue(agent.getLastTrace().events().stream().anyMatch(event -> event.type().equals("task.started")));
+        assertTrue(agent.getLastTrace().events().stream().anyMatch(event -> event.type().equals("task.completed")));
+    }
+
     private record StubResponse(LlmClient.ChatResponse response, boolean streamContent,
                                 java.util.function.Consumer<LlmClient.StreamListener> streamScript) {
         private static StubResponse plain(LlmClient.ChatResponse response) {

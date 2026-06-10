@@ -106,10 +106,12 @@ public class PlanExecuteAgent {
     private final PlanReviewHandler reviewHandler;
     private final MemoryManager memoryManager;
     private final ConversationHistoryCompactor historyCompactor;
+    private final PlanFailureClassifier failureClassifier = new PlanFailureClassifier();
     private final PrintStream out;
     private Supplier<String> externalContextSupplier = () -> "";
     private SkillRegistry skillRegistry;
     private SkillContextBuffer skillContextBuffer;
+    private PlanRunTrace lastTrace = new PlanRunTrace();
     private final PromptAssembler promptAssembler = PromptAssembler.createDefault();
 
     public PlanExecuteAgent(LlmClient llmClient) {
@@ -181,6 +183,10 @@ public class PlanExecuteAgent {
         this.skillContextBuffer = skillContextBuffer;
     }
 
+    public PlanRunTrace getLastTrace() {
+        return lastTrace;
+    }
+
     private void maybeCompactHistory(List<LlmClient.Message> messages, PrintStream out) {
         if (historyCompactor == null) return;
         int trigger = memoryManager.getContextProfile().compressionTriggerTokens();
@@ -241,7 +247,15 @@ public class PlanExecuteAgent {
      * 使用Plan-and-Execute模式执行
      */
     private PlanRunOutcome runWithPlan(String goal, StreamState streamState) throws IOException {
+        lastTrace = new PlanRunTrace();
         ExecutionPlan plan = planner.createPlan(goal);
+        PlanEstimate estimate = plan.getEstimate();
+        Map<String, String> attributes = new LinkedHashMap<>();
+        attributes.put("planId", plan.getId());
+        attributes.put("taskCount", String.valueOf(plan.getAllTasks().size()));
+        attributes.put("risk", estimate == null ? "UNKNOWN" : estimate.riskLevel().name());
+        attributes.put("estimatedMinutes", estimate == null ? "0" : String.valueOf(estimate.estimatedMinutes()));
+        lastTrace.record("plan.created", null, attributes);
         return reviewAndExecutePlan(plan, streamState);
     }
 
@@ -273,6 +287,7 @@ public class PlanExecuteAgent {
         plan.markStarted();
         StringBuilder finalResult = new StringBuilder();
         Map<String, Boolean> streamedTaskOutputs = new HashMap<>();
+        Map<String, Integer> retryAttempts = new HashMap<>();
 
         while (true) {
             if (CancellationContext.isCancelled()) {
@@ -283,12 +298,16 @@ public class PlanExecuteAgent {
                 break;
             }
 
-            List<TaskExecutionResult> batchResults = executeTaskBatch(plan, executableTasks, streamState);
+            List<TaskExecutionResult> batchResults = new ArrayList<>();
+            for (List<Task> safeBatch : splitIntoResourceSafeBatches(executableTasks)) {
+                batchResults.addAll(executeTaskBatch(plan, safeBatch, streamState));
+            }
             for (TaskExecutionResult batchResult : batchResults) {
                 Task task = batchResult.task();
 
                 if (!batchResult.failed()) {
                     task.markCompleted(batchResult.result());
+                    lastTrace.record("task.completed", task.getId(), Map.of());
                     streamedTaskOutputs.put(task.getId(), batchResult.streamedOutput());
                     log.info("Task completed: {} status={} resultChars={}",
                             task.getId(), task.getStatus(), batchResult.result() == null ? 0 : batchResult.result().length());
@@ -303,10 +322,22 @@ public class PlanExecuteAgent {
 
                 Exception error = batchResult.error();
                 task.markFailed(error.getMessage());
+                lastTrace.record("task.failed", task.getId(), Map.of("error", error.getMessage()));
                 log.warn("Task failed: {} error={}", task.getId(), error.getMessage());
                 out.println("❌ 失败 [" + task.getId() + "]: " + error.getMessage() + "\n");
 
-                if (plan.getProgress() < 0.5) {
+                PlanFailureClassifier.Action action = failureClassifier.classify(error);
+                if (action == PlanFailureClassifier.Action.RETRY_TASK
+                        && retryAttempts.getOrDefault(task.getId(), 0) < 1) {
+                    retryAttempts.merge(task.getId(), 1, Integer::sum);
+                    task.setStatus(Task.TaskStatus.PENDING);
+                    task.setError(null);
+                    out.println("↻ 重试 [" + task.getId() + "]\n");
+                    continue;
+                }
+
+                if (action != PlanFailureClassifier.Action.STOP
+                        && (action == PlanFailureClassifier.Action.REPLAN || plan.getProgress() < 0.5)) {
                     out.println("🔄 尝试重新规划...\n");
                     ExecutionPlan replanned = planner.replan(plan, error.getMessage());
                     return reviewAndExecutePlan(replanned, streamState).result();
@@ -354,6 +385,30 @@ public class PlanExecuteAgent {
                 .toList();
     }
 
+    List<List<Task>> splitIntoResourceSafeBatches(List<Task> executableTasks) {
+        List<List<Task>> batches = new ArrayList<>();
+        for (Task task : executableTasks) {
+            Set<String> taskLocks = PlanResourceLock.infer(task);
+            boolean placed = false;
+            for (List<Task> batch : batches) {
+                Set<String> batchLocks = batch.stream()
+                        .flatMap(existing -> PlanResourceLock.infer(existing).stream())
+                        .collect(Collectors.toSet());
+                if (Collections.disjoint(batchLocks, taskLocks)) {
+                    batch.add(task);
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                List<Task> newBatch = new ArrayList<>();
+                newBatch.add(task);
+                batches.add(newBatch);
+            }
+        }
+        return batches;
+    }
+
     private List<TaskExecutionResult> executeTaskBatch(ExecutionPlan plan, List<Task> executableTasks,
                                                        StreamState streamState) {
         if (executableTasks.size() == 1) {
@@ -361,6 +416,7 @@ public class PlanExecuteAgent {
             log.info("Executing single task: {} type={}", task.getId(), task.getType());
             out.println("▶️ 执行任务 [" + task.getId() + "]: " + task.getDescription());
             task.markStarted();
+            lastTrace.record("task.started", task.getId(), Map.of("type", task.getType().name()));
 
             try {
                 return List.of(TaskExecutionResult.success(task, executeTask(plan.getGoal(), plan, task, streamState, out)));
@@ -386,6 +442,7 @@ public class PlanExecuteAgent {
             for (Task task : executableTasks) {
                 out.println("▶️ 并行任务 [" + task.getId() + "]: " + task.getDescription());
                 task.markStarted();
+                lastTrace.record("task.started", task.getId(), Map.of("type", task.getType().name()));
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 buffers.put(task.getId(), baos);
                 PrintStream taskOut = new PrintStream(baos, true, StandardCharsets.UTF_8);
@@ -595,6 +652,7 @@ public class PlanExecuteAgent {
         if (invocations.size() > 1) {
             log.info("Task {} executing {} tool calls in parallel", taskId, invocations.size());
         }
+        lastTrace.record("tool.calls", taskId, Map.of("count", String.valueOf(invocations.size())));
         List<ToolExecutionResult> results = toolRegistry.executeTools(invocations);
         for (ToolExecutionResult result : results) {
             log.debug("Task {} tool result preview [{}]: {}", taskId, result.name(), preview(result.result(), 300));
