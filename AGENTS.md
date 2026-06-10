@@ -41,6 +41,11 @@ mvn test -DskipTests=false                  # 全量回归
 | Plan-and-Execute | `PlanExecuteAgent.java` | `/plan` |
 | Multi-Agent | `AgentOrchestrator.java` | `/team` |
 
+Plan-and-Execute now validates generated DAG plans before execution, attaches a conservative estimate
+(tasks / batches / effort / minutes / risk) to the review screen, splits ready tasks by resource locks
+before parallel execution, classifies failures before retry/replan/stop decisions, and keeps an in-memory
+`PlanRunTrace` for plan/task/tool events.
+
 核心内置工具 10 个：`read_file` / `write_file` / `list_dir` / `glob_files` / `grep_code` / `execute_command` / `create_project` / `web_search` / `web_fetch` / `revert_turn`
 
 `ToolRegistry` 已提供 `ToolProvider` / `ToolRegistrationContext` 扩展口；内置工具声明已全部迁移为独立 provider（File / FileSearch / Project / Shell / Web / Browser / Memory / Skill / Snapshot）。文件操作、项目脚手架、Shell、实时文件搜索与 Web 访问实现已分别下沉到 `FileService`、`ProjectScaffolder`、`ShellService`、`FileSearchService` 和 `WebService`；其余实现可继续从 Registry 私有方法逐步下沉，不要把新工具声明直接堆进 `ToolRegistry` 大类。

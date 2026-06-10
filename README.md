@@ -76,27 +76,31 @@ KIMI_API_KEY=
 | Plan-and-Execute | `/plan <任务>` | 多步骤任务、存在依赖关系的改动 |
 | Multi-Agent | `/team <任务>` | 需要规划、执行与审查协作的复杂任务 |
 
+### Plan-and-Execute 增强
+
+`/plan` 会先生成 DAG 计划，再进入人工审阅。执行前会校验计划结构，展示任务数、并行批次、努力分、预计耗时和风险等级；执行时会按资源锁拆分并行批次，避免写文件、Shell 等共享资源互相干扰。任务失败后会按错误类型选择重试、重规划或停止，并保留内存级 `PlanRunTrace`，记录 plan / task / tool 事件，方便后续恢复和评估扩展。
+
 ## 常用命令
 
-| 命令 | 用途 |
-|---|---|
-| `/plan <任务>` | 使用 Plan-and-Execute 执行任务 |
-| `/team <任务>` | 使用 Multi-Agent 执行任务 |
-| `/cancel` | 取消当前任务 |
-| `/clear` | 清空当前对话 |
-| `/context` | 查看上下文与 Token 状态 |
-| `/compact [focus]` | 手动压缩当前会话上下文，可指定摘要关注点 |
-| `/context events` | 查看最近原文上下文事件 |
-| `/context recall <keyword>` | 只读搜索原文上下文事件 |
-| `/context show <event_id>` | 查看单条原文上下文事件全文 |
-| `/context inject <event_id>` | 显式、限长地把单条原文事件注入当前上下文 |
-| `/memory list` | 查看长期记忆 |
-| `/memory open [project|global]` | 打开/定位 Markdown 记忆文件 |
-| `/mcp` | 查看 MCP server 状态 |
-| `/browser status` | 查看浏览器连接状态 |
-| `/hitl on` | 开启危险操作审批 |
-| `/snapshot` | 查看 Side-Git 快照 |
-| `/restore <N>` | 恢复快照 |
+| 命令                               | 用途 |
+|----------------------------------|---|
+| `/plan <任务>`                     | 使用 Plan-and-Execute 执行任务 |
+| `/team <任务>`                     | 使用 Multi-Agent 执行任务 |
+| `/cancel`                        | 取消当前任务 |
+| `/clear`                         | 清空当前对话 |
+| `/context`                       | 查看上下文与 Token 状态 |
+| `/compact [focus]`               | 手动压缩当前会话上下文，可指定摘要关注点 |
+| `/context events`                | 查看最近原文上下文事件 |
+| `/context recall <keyword>`      | 只读搜索原文上下文事件 |
+| `/context show <event_id>`       | 查看单条原文上下文事件全文 |
+| `/context inject <event_id>`     | 显式、限长地把单条原文事件注入当前上下文 |
+| `/memory list`                   | 查看长期记忆 |
+| `/memory open [project|global]`  | 打开/定位 Markdown 记忆文件 |
+| `/mcp`                           | 查看 MCP server 状态 |
+| `/browser status`                | 查看浏览器连接状态 |
+| `/hitl on`                       | 开启危险操作审批 |
+| `/snapshot`                      | 查看 Side-Git 快照 |
+| `/restore <N>`                   | 恢复快照 |
 
 输入 `/` 后可以使用 Tab 补全命令。
 

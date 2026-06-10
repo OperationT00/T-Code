@@ -54,6 +54,31 @@ class PlannerTest {
         assertTrue(plan.getTask("task_2").getDependencies().contains("task_1"));
     }
 
+    @Test
+    void parsesOptionalTaskMetadata() throws Exception {
+        Planner planner = new Planner(new StubGLMClient("""
+                {
+                  "summary": "metadata plan",
+                  "tasks": [
+                    {
+                      "id": "read",
+                      "description": "read pom",
+                      "type": "FILE_READ",
+                      "expected_output": "pom contents summarized",
+                      "resource_locks": ["file:pom.xml"],
+                      "dependencies": []
+                    }
+                  ]
+                }
+                """));
+
+        ExecutionPlan plan = planner.createPlan("Inspect pom.xml then summarize project dependencies");
+        Task task = plan.getTask("task_1");
+
+        assertEquals("pom contents summarized", task.getExpectedOutput());
+        assertEquals(List.of("file:pom.xml"), task.getResourceLocks());
+    }
+
     private static final class FailingGLMClient extends GLMClient {
         private FailingGLMClient() {
             super("test-key");

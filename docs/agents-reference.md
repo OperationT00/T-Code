@@ -214,6 +214,11 @@ CLI 入口 / Banner / .env 读取 / 日志初始化 / 模式切换 / JLine raw m
 ReAct 主循环 / 对话历史 / 工具调用与结果回灌
 
 ### PlanExecuteAgent.java
+Plan hardening: `PlanValidator` blocks invalid generated plans, `PlanEstimator` adds review-time
+tasks/batches/effort/minutes/risk estimates, `PlanResourceLock` prevents unsafe ready-task parallelism,
+`PlanFailureClassifier` chooses retry/replan/stop behavior, and `PlanRunTrace` records in-memory
+plan/task/tool events for later resume/evaluation work.
+
 规划后执行 / 计划审阅 / DAG 任务执行 / 并行批次 / 失败重规划
 
 ### AgentOrchestrator.java
@@ -223,9 +228,14 @@ Multi-Agent 编排器 / 三角色管理 / 按依赖分配 / 审查重试
 可配置角色子代理 / 独立对话历史 / Worker 用工具、Planner/Reviewer 不用
 
 ### Planner.java
+Planner parses optional task metadata (`expected_output`, `resource_locks`), validates generated DAGs,
+and attaches a conservative `PlanEstimate`.
+
 LLM 生成计划 JSON / 简单任务最小计划 / 重编号 task_1..N / 依赖计算
 
 ### ExecutionPlan.java
+ExecutionPlan stores the latest `PlanEstimate`; Task stores optional expected output and resource locks.
+
 DAG 拓扑排序 / 可执行任务判定 / 进度可视化
 
 ### ToolRegistry.java

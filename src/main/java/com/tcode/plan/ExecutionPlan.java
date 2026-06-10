@@ -12,6 +12,7 @@ public class ExecutionPlan {
     private final List<String> executionOrder;    // 执行顺序（拓扑排序后）
     private PlanStatus status;
     private String summary;                       // 计划摘要
+    private PlanEstimate estimate;
     private long startTime;
     private long endTime;
 
@@ -36,10 +37,12 @@ public class ExecutionPlan {
     public String getGoal() { return goal; }
     public PlanStatus getStatus() { return status; }
     public String getSummary() { return summary; }
+    public PlanEstimate getEstimate() { return estimate; }
     public long getStartTime() { return startTime; }
     public long getEndTime() { return endTime; }
 
     public void setSummary(String summary) { this.summary = summary; }
+    public void setEstimate(PlanEstimate estimate) { this.estimate = estimate; }
     public void setStatus(PlanStatus status) { this.status = status; }
 
     /**
