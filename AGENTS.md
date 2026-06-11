@@ -42,9 +42,13 @@ mvn test -DskipTests=false                  # 全量回归
 | Multi-Agent | `AgentOrchestrator.java` | `/team` |
 
 Plan-and-Execute now validates generated DAG plans before execution, attaches a conservative estimate
-(tasks / batches / effort / minutes / risk) to the review screen, splits ready tasks by resource locks
-before parallel execution, classifies failures before retry/replan/stop decisions, and keeps an in-memory
-`PlanRunTrace` for plan/task/tool events.
+(tasks / batches / effort / minutes / risk) to the review screen, normalizes resource locks, infers
+specific file write locks from task descriptions when planner metadata is incomplete, treats `dir:<path>`
+locks as conflicting with files under that directory, splits ready tasks by resource locks before
+parallel execution, records resource conflict/batch-split trace events,
+classifies failures before retry/replan/stop decisions, and keeps an in-memory `PlanRunTrace` for
+plan/task/tool events. Explicit `resource_locks` remain preferred; missing file paths fall back to
+coarse locks such as `tool:file-write`.
 
 核心内置工具 10 个：`read_file` / `write_file` / `list_dir` / `glob_files` / `grep_code` / `execute_command` / `create_project` / `web_search` / `web_fetch` / `revert_turn`
 

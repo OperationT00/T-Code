@@ -1,5 +1,11 @@
 # t-code
 
+## PAE Resource Locks
+
+When planner metadata is incomplete, file-write tasks infer conservative `file:<path>` locks from
+path-like task descriptions. If no concrete path is available, execution falls back to coarse locks such
+as `tool:file-write`.
+
 一个使用 Java 构建的 Agent Coding CLI。
 
 `t-code` 可以在终端中理解代码库、读取和修改文件、执行命令、规划复杂任务，并通过 Memory、联网搜索、MCP 与 Skill 扩展能力。
@@ -78,7 +84,7 @@ KIMI_API_KEY=
 
 ### Plan-and-Execute 增强
 
-`/plan` 会先生成 DAG 计划，再进入人工审阅。执行前会校验计划结构，展示任务数、并行批次、努力分、预计耗时和风险等级；执行时会按资源锁拆分并行批次，避免写文件、Shell 等共享资源互相干扰。任务失败后会按错误类型选择重试、重规划或停止，并保留内存级 `PlanRunTrace`，记录 plan / task / tool 事件，方便后续恢复和评估扩展。
+`/plan` 会先生成 DAG 计划，再进入人工审阅。执行前会校验计划结构，展示任务数、并行批次、努力分、预计耗时和风险等级；执行时会规范化资源锁，并按资源锁拆分并行批次，避免写文件、Shell 等共享资源互相干扰。资源冲突和批次拆分会写入内存级 `PlanRunTrace`；任务失败后会按错误类型选择重试、重规划或停止，方便后续恢复和评估扩展。
 
 ## 常用命令
 

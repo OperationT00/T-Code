@@ -203,6 +203,55 @@ class PlanExecuteAgentTest {
 
         assertEquals(List.of(first, third), batches.get(0));
         assertEquals(List.of(second), batches.get(1));
+        assertTrue(agent.getLastTrace().events().stream()
+                .anyMatch(event -> event.type().equals("resource.conflict")
+                        && "task_2".equals(event.taskId())));
+        assertTrue(agent.getLastTrace().events().stream()
+                .anyMatch(event -> event.type().equals("resource.batch.split")
+                        && "2".equals(event.attributes().get("batches"))));
+    }
+
+    @Test
+    void splitsParallelFileWritesWhenPlannerOmittedExplicitLocks() {
+        StubGLMClient llmClient = new StubGLMClient(List.of());
+        PlanExecuteAgent agent = new PlanExecuteAgent(
+                llmClient,
+                new ToolRegistry(),
+                new StubPlanner(llmClient),
+                null,
+                (goal, plan) -> PlanExecuteAgent.PlanReviewDecision.execute()
+        );
+
+        Task first = new Task("task_1", "update src/main/java/com/tcode/App.java", Task.TaskType.FILE_WRITE);
+        Task second = new Task("task_2", "rewrite src/main/java/com/tcode/App.java", Task.TaskType.FILE_WRITE);
+        Task third = new Task("task_3", "update src/test/java/com/tcode/AppTest.java", Task.TaskType.FILE_WRITE);
+
+        List<List<Task>> batches = agent.splitIntoResourceSafeBatches(List.of(first, second, third));
+
+        assertEquals(List.of(first, third), batches.get(0));
+        assertEquals(List.of(second), batches.get(1));
+    }
+
+    @Test
+    void splitsParallelTasksWhenFileAndDirectoryLocksOverlap() {
+        StubGLMClient llmClient = new StubGLMClient(List.of());
+        PlanExecuteAgent agent = new PlanExecuteAgent(
+                llmClient,
+                new ToolRegistry(),
+                new StubPlanner(llmClient),
+                null,
+                (goal, plan) -> PlanExecuteAgent.PlanReviewDecision.execute()
+        );
+
+        Task directoryWriter = new Task("task_1", "rewrite package", Task.TaskType.FILE_WRITE);
+        directoryWriter.setResourceLocks(List.of("dir:src/main/java/com/tcode"));
+        Task fileWriter = new Task("task_2", "update src/main/java/com/tcode/App.java", Task.TaskType.FILE_WRITE);
+        Task unrelatedWriter = new Task("task_3", "update src/test/java/com/tcode/AppTest.java", Task.TaskType.FILE_WRITE);
+
+        List<List<Task>> batches = agent.splitIntoResourceSafeBatches(List.of(directoryWriter, fileWriter, unrelatedWriter));
+
+        assertEquals(List.of(directoryWriter, unrelatedWriter), batches.get(0));
+        assertEquals(List.of(fileWriter), batches.get(1));
     }
 
     @Test
