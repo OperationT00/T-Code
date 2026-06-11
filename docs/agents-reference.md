@@ -215,9 +215,11 @@ ReAct 主循环 / 对话历史 / 工具调用与结果回灌
 
 ### PlanExecuteAgent.java
 Plan hardening: `PlanValidator` blocks invalid generated plans, `PlanEstimator` adds review-time
-tasks/batches/effort/minutes/risk estimates, `PlanResourceLock` prevents unsafe ready-task parallelism,
-`PlanFailureClassifier` chooses retry/replan/stop behavior, and `PlanRunTrace` records in-memory
-plan/task/tool events for later resume/evaluation work.
+tasks/batches/effort/minutes/risk estimates, `PlanResourceLock` normalizes locks, infers conservative
+file write locks from task descriptions when planner metadata is incomplete, treats directory locks as
+conflicting with files under that directory, and prevents unsafe ready-task parallelism,
+`PlanFailureClassifier` chooses retry/replan/stop behavior, and `PlanRunTrace`
+records in-memory plan/task/tool/resource-conflict events for later resume/evaluation work.
 
 规划后执行 / 计划审阅 / DAG 任务执行 / 并行批次 / 失败重规划
 

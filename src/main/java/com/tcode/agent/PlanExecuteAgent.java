@@ -394,10 +394,18 @@ public class PlanExecuteAgent {
                 Set<String> batchLocks = batch.stream()
                         .flatMap(existing -> PlanResourceLock.infer(existing).stream())
                         .collect(Collectors.toSet());
-                if (Collections.disjoint(batchLocks, taskLocks)) {
+                Set<String> conflicts = taskLocks.stream()
+                        .filter(taskLock -> batchLocks.stream()
+                                .anyMatch(batchLock -> PlanResourceLock.conflicts(taskLock, batchLock)))
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+                if (conflicts.isEmpty()) {
                     batch.add(task);
                     placed = true;
                     break;
+                } else {
+                    lastTrace.record("resource.conflict", task.getId(), Map.of(
+                            "locks", String.join(",", conflicts),
+                            "batchSize", String.valueOf(batch.size())));
                 }
             }
             if (!placed) {
@@ -405,6 +413,11 @@ public class PlanExecuteAgent {
                 newBatch.add(task);
                 batches.add(newBatch);
             }
+        }
+        if (batches.size() > 1) {
+            lastTrace.record("resource.batch.split", null, Map.of(
+                    "tasks", String.valueOf(executableTasks.size()),
+                    "batches", String.valueOf(batches.size())));
         }
         return batches;
     }

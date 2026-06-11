@@ -75,8 +75,8 @@ public class Task {
         resourceLocks.clear();
         if (locks != null) {
             locks.stream()
-                    .filter(lock -> lock != null && !lock.isBlank())
-                    .map(String::trim)
+                    .map(PlanResourceLock::normalize)
+                    .filter(lock -> !lock.isBlank())
                     .distinct()
                     .forEach(resourceLocks::add);
         }
