@@ -9,19 +9,23 @@ public final class PlanFailureClassifier {
         STOP
     }
 
-    public Action classify(Exception error) {
+    public record RecoveryDecision(Action action, String reason, boolean userInterventionRecommended) {
+    }
+
+    public RecoveryDecision classify(Exception error) {
         String message = error == null || error.getMessage() == null
                 ? ""
                 : error.getMessage().toLowerCase(Locale.ROOT);
         if (message.contains("timeout") || message.contains("timed out") || message.contains("超时")) {
-            return Action.RETRY_TASK;
+            return new RecoveryDecision(Action.RETRY_TASK, "transient timeout", false);
         }
         if (message.contains("策略拒绝") || message.contains("policy") || message.contains("denied")) {
-            return Action.STOP;
+            return new RecoveryDecision(Action.STOP, "policy denied", true);
         }
-        if (message.contains("依赖") || message.contains("dependency") || message.contains("计划") || message.contains("plan")) {
-            return Action.REPLAN;
+        if (message.contains("依赖") || message.contains("dependency")
+                || message.contains("计划") || message.contains("plan")) {
+            return new RecoveryDecision(Action.REPLAN, "plan dependency failure", false);
         }
-        return Action.REPLAN;
+        return new RecoveryDecision(Action.REPLAN, "unclassified execution failure", false);
     }
 }

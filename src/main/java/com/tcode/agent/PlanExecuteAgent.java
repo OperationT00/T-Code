@@ -76,6 +76,20 @@ public class PlanExecuteAgent {
         }
     }
 
+    private record PlanExecutionOutcome(String result, ExecutionPlan replannedPlan) {
+        static PlanExecutionOutcome finished(String result) {
+            return new PlanExecutionOutcome(result, null);
+        }
+
+        static PlanExecutionOutcome replan(ExecutionPlan replannedPlan) {
+            return new PlanExecutionOutcome(null, replannedPlan);
+        }
+
+        boolean needsReplan() {
+            return replannedPlan != null;
+        }
+    }
+
     public interface PlanReviewHandler {
         PlanReviewDecision review(String goal, ExecutionPlan plan);
     }
@@ -256,14 +270,20 @@ public class PlanExecuteAgent {
         attributes.put("risk", estimate == null ? "UNKNOWN" : estimate.riskLevel().name());
         attributes.put("estimatedMinutes", estimate == null ? "0" : String.valueOf(estimate.estimatedMinutes()));
         lastTrace.record("plan.created", null, attributes);
-        return reviewAndExecutePlan(plan, streamState);
+        return reviewAndExecutePlan(plan, streamState, PlanRecoveryBudget.defaults());
     }
 
-    private PlanRunOutcome reviewAndExecutePlan(ExecutionPlan plan, StreamState streamState) throws IOException {
+    private PlanRunOutcome reviewAndExecutePlan(ExecutionPlan plan, StreamState streamState,
+                                                PlanRecoveryBudget recoveryBudget) throws IOException {
         while (true) {
             PlanReviewDecision decision = reviewHandler.review(plan.getGoal(), plan);
             if (decision == null || decision.action() == PlanReviewAction.EXECUTE) {
-                return PlanRunOutcome.executed(executePlan(plan, streamState));
+                PlanExecutionOutcome executionOutcome = executePlan(plan, streamState, recoveryBudget);
+                if (executionOutcome.needsReplan()) {
+                    plan = executionOutcome.replannedPlan();
+                    continue;
+                }
+                return PlanRunOutcome.executed(executionOutcome.result());
             }
 
             if (decision.action() == PlanReviewAction.CANCEL) {
@@ -272,7 +292,12 @@ public class PlanExecuteAgent {
 
             String feedback = decision.feedback() == null ? "" : decision.feedback().trim();
             if (feedback.isEmpty()) {
-                return PlanRunOutcome.executed(executePlan(plan, streamState));
+                PlanExecutionOutcome executionOutcome = executePlan(plan, streamState, recoveryBudget);
+                if (executionOutcome.needsReplan()) {
+                    plan = executionOutcome.replannedPlan();
+                    continue;
+                }
+                return PlanRunOutcome.executed(executionOutcome.result());
             }
 
             out.println("📝 已收到补充要求，正在重新规划...\n");
@@ -280,18 +305,18 @@ public class PlanExecuteAgent {
         }
     }
 
-    private String executePlan(ExecutionPlan plan, StreamState streamState) throws IOException {
+    private PlanExecutionOutcome executePlan(ExecutionPlan plan, StreamState streamState,
+                                             PlanRecoveryBudget recoveryBudget) throws IOException {
         log.info("Executing plan: goal='{}', taskCount={}", plan.getGoal(), plan.getAllTasks().size());
         out.println("🚀 开始执行计划...\n");
 
         plan.markStarted();
         StringBuilder finalResult = new StringBuilder();
         Map<String, Boolean> streamedTaskOutputs = new HashMap<>();
-        Map<String, Integer> retryAttempts = new HashMap<>();
 
         while (true) {
             if (CancellationContext.isCancelled()) {
-                return "⏹️ 已取消当前计划执行。";
+                return PlanExecutionOutcome.finished("⏹️ 已取消当前计划执行。");
             }
             List<Task> executableTasks = getExecutableTasksInOrder(plan);
             if (executableTasks.isEmpty()) {
@@ -326,21 +351,57 @@ public class PlanExecuteAgent {
                 log.warn("Task failed: {} error={}", task.getId(), error.getMessage());
                 out.println("❌ 失败 [" + task.getId() + "]: " + error.getMessage() + "\n");
 
-                PlanFailureClassifier.Action action = failureClassifier.classify(error);
+                PlanFailureClassifier.RecoveryDecision recoveryDecision = failureClassifier.classify(error);
+                PlanFailureClassifier.Action action = recoveryDecision.action();
                 if (action == PlanFailureClassifier.Action.RETRY_TASK
-                        && retryAttempts.getOrDefault(task.getId(), 0) < 1) {
-                    retryAttempts.merge(task.getId(), 1, Integer::sum);
+                        && recoveryBudget.canRetry(task, error)) {
+                    recoveryBudget.recordRetry(task, error);
+                    lastTrace.record("task.retry.scheduled", task.getId(), Map.of(
+                            "reason", recoveryDecision.reason(),
+                            "attempts", String.valueOf(recoveryBudget.retryAttempts(task)),
+                            "totalRecoveryActions", String.valueOf(recoveryBudget.totalRecoveryActions())));
                     task.setStatus(Task.TaskStatus.PENDING);
                     task.setError(null);
                     out.println("↻ 重试 [" + task.getId() + "]\n");
                     continue;
+                } else if (action == PlanFailureClassifier.Action.RETRY_TASK) {
+                    lastTrace.record("task.retry.exhausted", task.getId(), Map.of(
+                            "reason", recoveryDecision.reason(),
+                            "attempts", String.valueOf(recoveryBudget.retryAttempts(task))));
                 }
 
                 if (action != PlanFailureClassifier.Action.STOP
                         && (action == PlanFailureClassifier.Action.REPLAN || plan.getProgress() < 0.5)) {
+                    if (!recoveryBudget.canReplan(error)) {
+                        if (recoveryBudget.isRepeatedFailure(error)) {
+                            lastTrace.record("plan.recovery.stuck", task.getId(), Map.of(
+                                    "reason", "repeated failure"));
+                        }
+                        lastTrace.record("plan.replan.exhausted", task.getId(), Map.of(
+                                "reason", recoveryDecision.reason(),
+                                "replans", String.valueOf(recoveryBudget.replanAttempts()),
+                                "totalRecoveryActions", String.valueOf(recoveryBudget.totalRecoveryActions())));
+                        lastTrace.record("plan.recovery.stopped", task.getId(), Map.of(
+                                "reason", "recovery budget exhausted"));
+                        if (!finalResult.isEmpty()) {
+                            finalResult.append("\n");
+                        }
+                        finalResult.append("Plan recovery stopped after reaching retry/replan budget. Last failure: ")
+                                .append(error.getMessage());
+                        continue;
+                    }
+                    recoveryBudget.recordReplan(error);
+                    lastTrace.record("plan.replan.requested", task.getId(), Map.of(
+                            "reason", recoveryDecision.reason(),
+                            "replans", String.valueOf(recoveryBudget.replanAttempts()),
+                            "totalRecoveryActions", String.valueOf(recoveryBudget.totalRecoveryActions())));
                     out.println("🔄 尝试重新规划...\n");
-                    ExecutionPlan replanned = planner.replan(plan, error.getMessage());
-                    return reviewAndExecutePlan(replanned, streamState).result();
+                    ExecutionPlan replanned = planner.replan(plan,
+                            buildReplanFailureContext(plan, task, error, recoveryBudget));
+                    lastTrace.record("plan.replan.created", null, Map.of(
+                            "planId", replanned.getId(),
+                            "taskCount", String.valueOf(replanned.getAllTasks().size())));
+                    return PlanExecutionOutcome.replan(replanned);
                 }
 
                 if (!finalResult.isEmpty()) {
@@ -352,7 +413,7 @@ public class PlanExecuteAgent {
 
         if (!plan.isAllCompleted() && !plan.hasFailed()) {
             plan.markFailed();
-            return "⚠️ 计划未能继续推进，存在未满足依赖的任务。";
+            return PlanExecutionOutcome.finished("⚠️ 计划未能继续推进，存在未满足依赖的任务。");
         }
 
         String planSummary = finalResult.isEmpty()
@@ -362,16 +423,16 @@ public class PlanExecuteAgent {
         if (plan.hasFailed()) {
             plan.markFailed();
             if (planSummary.isBlank()) {
-                return "⚠️ 计划部分完成，有任务失败。";
+                return PlanExecutionOutcome.finished("⚠️ 计划部分完成，有任务失败。");
             }
-            return "⚠️ 计划部分完成，有任务失败。\n" + planSummary;
+            return PlanExecutionOutcome.finished("⚠️ 计划部分完成，有任务失败。\n" + planSummary);
         }
 
         plan.markCompleted();
         if (planSummary.isBlank()) {
-            return "✅ 计划执行完成！";
+            return PlanExecutionOutcome.finished("✅ 计划执行完成！");
         }
-        return "✅ 计划执行完成！\n" + planSummary;
+        return PlanExecutionOutcome.finished("✅ 计划执行完成！\n" + planSummary);
     }
 
     private List<Task> getExecutableTasksInOrder(ExecutionPlan plan) {
@@ -383,6 +444,41 @@ public class PlanExecuteAgent {
                 .filter(executableIds::contains)
                 .map(plan::getTask)
                 .toList();
+    }
+
+    private String buildReplanFailureContext(ExecutionPlan plan, Task failedTask, Exception error,
+                                             PlanRecoveryBudget recoveryBudget) {
+        StringBuilder context = new StringBuilder();
+        context.append("Original goal: ").append(plan.getGoal()).append("\n");
+        context.append("Failed task: ").append(failedTask.getId()).append("\n");
+        context.append("Failed task type: ").append(failedTask.getType()).append("\n");
+        context.append("Failed task description: ").append(failedTask.getDescription()).append("\n");
+        context.append("Failure reason: ").append(error.getMessage()).append("\n");
+        context.append("Retry attempts for failed task: ")
+                .append(recoveryBudget.retryAttempts(failedTask)).append("\n");
+        context.append("Replan attempts so far: ")
+                .append(recoveryBudget.replanAttempts()).append("\n");
+        context.append("Total recovery actions so far: ")
+                .append(recoveryBudget.totalRecoveryActions()).append("\n");
+        context.append("Completed tasks:\n");
+        for (Task task : plan.getAllTasks()) {
+            if (task.getStatus() == Task.TaskStatus.COMPLETED) {
+                context.append("- ").append(task.getId())
+                        .append(": ").append(task.getDescription())
+                        .append("\n");
+            }
+        }
+        context.append("Failed tasks:\n");
+        for (Task task : plan.getAllTasks()) {
+            if (task.getStatus() == Task.TaskStatus.FAILED) {
+                context.append("- ").append(task.getId())
+                        .append(": ").append(task.getDescription())
+                        .append(" -> ").append(task.getError())
+                        .append("\n");
+            }
+        }
+        context.append("Do not repeat the same failed approach. Preserve completed work and create a revised executable plan.");
+        return context.toString();
     }
 
     List<List<Task>> splitIntoResourceSafeBatches(List<Task> executableTasks) {

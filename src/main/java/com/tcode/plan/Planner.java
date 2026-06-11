@@ -186,7 +186,9 @@ public class Planner {
             }
         }
 
-        context.append("\n请制定新的执行计划，避开之前的问题。");
+        context.append("\n请制定新的执行计划，避开之前的问题。\n");
+        context.append("If structured recovery context is present, preserve completed work, ")
+                .append("avoid the failed approach, and revise only the remaining executable steps.");
 
         return createPlan(context.toString());
     }

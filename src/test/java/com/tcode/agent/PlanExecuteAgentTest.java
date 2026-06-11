@@ -274,6 +274,41 @@ class PlanExecuteAgentTest {
         assertTrue(agent.getLastTrace().events().stream().anyMatch(event -> event.type().equals("task.completed")));
     }
 
+    @Test
+    void stopsReplanningWhenRecoveryBudgetIsExhausted() {
+        StubGLMClient llmClient = new StubGLMClient(List.of());
+        ReplanningStubPlanner planner = new ReplanningStubPlanner(llmClient);
+        PlanExecuteAgent agent = new PlanExecuteAgent(
+                llmClient,
+                new ToolRegistry(),
+                planner,
+                null,
+                (goal, plan) -> PlanExecuteAgent.PlanReviewDecision.execute()
+        );
+
+        String result = agent.run("always fail");
+
+        assertEquals(2, planner.replanCount);
+        assertTrue(planner.lastFailureReason.contains("Failed task: task_1"));
+        assertTrue(planner.lastFailureReason.contains("always failing task"));
+        assertTrue(planner.failureReasons.stream()
+                .anyMatch(reason -> reason.contains("Replan attempts so far: 1")));
+        assertTrue(planner.lastFailureReason.contains("Do not repeat the same failed approach"));
+        assertTrue(result.contains("Plan recovery stopped"));
+        assertTrue(agent.getLastTrace().events().stream()
+                .anyMatch(event -> event.type().equals("plan.replan.exhausted")));
+        assertTrue(agent.getLastTrace().events().stream()
+                .anyMatch(event -> event.type().equals("plan.replan.created")
+                        && "plan-retry-1".equals(event.attributes().get("planId"))));
+        assertTrue(agent.getLastTrace().events().stream()
+                .anyMatch(event -> event.type().equals("plan.replan.requested")
+                        && "unclassified execution failure".equals(event.attributes().get("reason"))));
+        assertTrue(agent.getLastTrace().events().stream()
+                .anyMatch(event -> event.type().equals("plan.recovery.stuck")));
+        assertTrue(agent.getLastTrace().events().stream()
+                .anyMatch(event -> event.type().equals("plan.recovery.stopped")));
+    }
+
     private record StubResponse(LlmClient.ChatResponse response, boolean streamContent,
                                 java.util.function.Consumer<LlmClient.StreamListener> streamScript) {
         private static StubResponse plain(LlmClient.ChatResponse response) {
@@ -299,6 +334,36 @@ class PlanExecuteAgentTest {
         public ExecutionPlan createPlan(String goal) {
             ExecutionPlan plan = new ExecutionPlan("plan-test", goal);
             plan.addTask(new Task("task_1", "读取测试文件", Task.TaskType.FILE_READ));
+            plan.computeExecutionOrder();
+            return plan;
+        }
+    }
+
+    private static final class ReplanningStubPlanner extends Planner {
+        private int replanCount;
+        private String lastFailureReason = "";
+        private final List<String> failureReasons = new java.util.ArrayList<>();
+
+        private ReplanningStubPlanner(LlmClient llmClient) {
+            super(llmClient);
+        }
+
+        @Override
+        public ExecutionPlan createPlan(String goal) {
+            return failingPlan("plan-initial", goal);
+        }
+
+        @Override
+        public ExecutionPlan replan(ExecutionPlan failedPlan, String failureReason) {
+            replanCount++;
+            lastFailureReason = failureReason;
+            failureReasons.add(failureReason);
+            return failingPlan("plan-retry-" + replanCount, failedPlan.getGoal());
+        }
+
+        private ExecutionPlan failingPlan(String id, String goal) {
+            ExecutionPlan plan = new ExecutionPlan(id, goal);
+            plan.addTask(new Task("task_1", "always failing task", Task.TaskType.ANALYSIS));
             plan.computeExecutionOrder();
             return plan;
         }

@@ -48,7 +48,14 @@ locks as conflicting with files under that directory, splits ready tasks by reso
 parallel execution, records resource conflict/batch-split trace events,
 classifies failures before retry/replan/stop decisions, and keeps an in-memory `PlanRunTrace` for
 plan/task/tool events. Explicit `resource_locks` remain preferred; missing file paths fall back to
-coarse locks such as `tool:file-write`.
+coarse locks such as `tool:file-write`. `PlanRecoveryBudget` caps per-task retries, per-run replans,
+and total recovery actions so retry/replan cannot loop indefinitely; repeated failures are recorded as
+`plan.recovery.stuck` before recovery stops. Replanned plans are returned to the review loop instead
+of recursively invoking plan execution, and `plan.replan.created` records each generated replacement plan.
+Replan failure context includes the failed task, completed/failed task summaries, retry/replan counts,
+and an explicit instruction to avoid repeating the same failed approach. `PlanFailureClassifier` returns
+`RecoveryDecision` with action, reason, and user-intervention hint; recovery budget defaults can be
+overridden with `tcode.plan.recovery.*` system properties or `TCODE_PLAN_RECOVERY_*` environment variables.
 
 核心内置工具 10 个：`read_file` / `write_file` / `list_dir` / `glob_files` / `grep_code` / `execute_command` / `create_project` / `web_search` / `web_fetch` / `revert_turn`
 
