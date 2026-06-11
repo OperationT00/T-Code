@@ -220,6 +220,15 @@ file write locks from task descriptions when planner metadata is incomplete, tre
 conflicting with files under that directory, and prevents unsafe ready-task parallelism,
 `PlanFailureClassifier` chooses retry/replan/stop behavior, and `PlanRunTrace`
 records in-memory plan/task/tool/resource-conflict events for later resume/evaluation work.
+`PlanRecoveryBudget` caps per-task retries, per-run replans, and total recovery actions; exhausted
+or repeated recovery paths record `plan.replan.exhausted`, `plan.recovery.stuck`, and
+`plan.recovery.stopped` trace events. Replan recovery returns a replacement plan to the review loop
+instead of recursively invoking plan execution; each generated replacement records `plan.replan.created`.
+Failure context passed to `Planner.replan` includes failed task details, completed/failed task summaries,
+retry/replan counts, and an explicit constraint to avoid the repeated failed approach.
+`PlanFailureClassifier` returns `RecoveryDecision` with action/reason/user-intervention metadata; budget
+defaults read `tcode.plan.recovery.maxRetriesPerTask`, `maxReplansPerRun`, `maxTotalActions`, and
+`maxConsecutiveSameFailure` system properties, with matching `TCODE_PLAN_RECOVERY_*` environment variables.
 
 规划后执行 / 计划审阅 / DAG 任务执行 / 并行批次 / 失败重规划
 

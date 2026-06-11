@@ -6,6 +6,11 @@ When planner metadata is incomplete, file-write tasks infer conservative `file:<
 path-like task descriptions. If no concrete path is available, execution falls back to coarse locks such
 as `tool:file-write`.
 
+PAE recovery is guarded by `PlanRecoveryBudget`: per-task retries, per-run replans, and total recovery
+actions are capped, exhausted recovery paths are recorded in `PlanRunTrace`, and replanned plans return
+to the review loop instead of recursively invoking plan execution. Recovery decisions include reasons,
+and recovery budget defaults can be tuned with `tcode.plan.recovery.*` system properties.
+
 一个使用 Java 构建的 Agent Coding CLI。
 
 `t-code` 可以在终端中理解代码库、读取和修改文件、执行命令、规划复杂任务，并通过 Memory、联网搜索、MCP 与 Skill 扩展能力。
