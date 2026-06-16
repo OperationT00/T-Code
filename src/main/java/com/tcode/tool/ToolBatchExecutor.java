@@ -33,6 +33,20 @@ public final class ToolBatchExecutor {
         if (invocations == null || invocations.isEmpty()) {
             return List.of();
         }
+        List<List<ToolRegistry.ToolInvocation>> batches = ToolResourceScheduler.splitIntoBatches(invocations);
+        if (batches.size() > 1) {
+            List<ToolRegistry.ToolExecutionResult> results = new ArrayList<>();
+            for (List<ToolRegistry.ToolInvocation> batch : batches) {
+                results.addAll(executeBatch(batch, toolExecutor));
+            }
+            return results;
+        }
+        return executeBatch(invocations, toolExecutor);
+    }
+
+    private List<ToolRegistry.ToolExecutionResult> executeBatch(
+            List<ToolRegistry.ToolInvocation> invocations,
+            Function<ToolRegistry.ToolInvocation, ToolOutput> toolExecutor) {
         if (CancellationContext.isCancelled()) {
             return invocations.stream()
                     .map(invocation -> ToolRegistry.ToolExecutionResult.cancelled(invocation))
