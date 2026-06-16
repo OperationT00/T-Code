@@ -15,10 +15,16 @@ import java.util.function.Function;
 public final class ToolBatchExecutor {
     private final long timeoutSeconds;
     private final int maxParallelTools;
+    private final int maxRetryAttempts;
 
     public ToolBatchExecutor(long timeoutSeconds, int maxParallelTools) {
+        this(timeoutSeconds, maxParallelTools, 1);
+    }
+
+    public ToolBatchExecutor(long timeoutSeconds, int maxParallelTools, int maxRetryAttempts) {
         this.timeoutSeconds = timeoutSeconds;
         this.maxParallelTools = maxParallelTools;
+        this.maxRetryAttempts = Math.max(maxRetryAttempts, 0);
     }
 
     public List<ToolRegistry.ToolExecutionResult> execute(
@@ -27,9 +33,23 @@ public final class ToolBatchExecutor {
         if (invocations == null || invocations.isEmpty()) {
             return List.of();
         }
+        List<List<ToolRegistry.ToolInvocation>> batches = ToolResourceScheduler.splitIntoBatches(invocations);
+        if (batches.size() > 1) {
+            List<ToolRegistry.ToolExecutionResult> results = new ArrayList<>();
+            for (List<ToolRegistry.ToolInvocation> batch : batches) {
+                results.addAll(executeBatch(batch, toolExecutor));
+            }
+            return results;
+        }
+        return executeBatch(invocations, toolExecutor);
+    }
+
+    private List<ToolRegistry.ToolExecutionResult> executeBatch(
+            List<ToolRegistry.ToolInvocation> invocations,
+            Function<ToolRegistry.ToolInvocation, ToolOutput> toolExecutor) {
         if (CancellationContext.isCancelled()) {
             return invocations.stream()
-                    .map(invocation -> ToolRegistry.ToolExecutionResult.failed(invocation, "用户取消了此次工具调用"))
+                    .map(invocation -> ToolRegistry.ToolExecutionResult.cancelled(invocation))
                     .toList();
         }
         if (invocations.size() == 1) {
@@ -62,18 +82,18 @@ public final class ToolBatchExecutor {
                     results.add(future.get());
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    results.add(ToolRegistry.ToolExecutionResult.failed(invocation, "工具执行被中断"));
+                    results.add(ToolRegistry.ToolExecutionResult.cancelled(invocation));
                 } catch (ExecutionException e) {
                     Throwable cause = e.getCause();
                     results.add(ToolRegistry.ToolExecutionResult.failed(invocation,
-                            cause == null || cause.getMessage() == null ? "未知错误" : cause.getMessage()));
+                            cause == null || cause.getMessage() == null ? "unknown error" : cause.getMessage()));
                 }
             }
             return results;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return invocations.stream()
-                    .map(invocation -> ToolRegistry.ToolExecutionResult.failed(invocation, "工具批次执行被中断"))
+                    .map(ToolRegistry.ToolExecutionResult::cancelled)
                     .toList();
         } finally {
             executor.shutdownNow();
@@ -84,11 +104,27 @@ public final class ToolBatchExecutor {
             ToolRegistry.ToolInvocation invocation,
             Function<ToolRegistry.ToolInvocation, ToolOutput> toolExecutor) {
         if (CancellationContext.isCancelled()) {
-            return ToolRegistry.ToolExecutionResult.failed(invocation, "用户取消了此次工具调用");
+            return ToolRegistry.ToolExecutionResult.cancelled(invocation);
         }
         long startedAt = System.nanoTime();
-        ToolOutput output = toolExecutor.apply(invocation);
-        return ToolRegistry.ToolExecutionResult.completed(invocation, output, elapsedMillis(startedAt));
+        ToolOutput output = null;
+        int attempts = 0;
+        int maxAttempts = 1 + maxRetryAttempts;
+        while (attempts < maxAttempts) {
+            attempts++;
+            output = toolExecutor.apply(invocation);
+            if (output == null || output.succeeded() || !output.retryable()) {
+                break;
+            }
+        }
+        if (output == null) {
+            output = ToolOutput.text("");
+        }
+        long elapsed = elapsedMillis(startedAt);
+        return ToolRegistry.ToolExecutionResult.completed(
+                invocation,
+                output.withTiming(elapsed).withAttempts(attempts),
+                elapsed);
     }
 
     private long elapsedMillis(long startedAtNanos) {

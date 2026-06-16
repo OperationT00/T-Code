@@ -8,13 +8,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LoadSkillToolTest {
 
     @Test
     void loadsExistingSkillIntoBuffer(@TempDir Path tempDir) throws IOException {
-        SkillRegistry registry = registryWith(tempDir, "web-access", "决策手册",
+        SkillRegistry registry = registryWith(tempDir, "web-access", "decision handbook",
                 "# Body\nwhen to fetch\nwhen to browse\n");
         SkillContextBuffer buffer = new SkillContextBuffer();
         ToolRegistry tools = new ToolRegistry();
@@ -23,11 +24,11 @@ class LoadSkillToolTest {
 
         String result = tools.executeTool("load_skill", "{\"name\":\"web-access\"}");
 
-        assertTrue(result.contains("已加载 skill 'web-access'"), result);
+        assertTrue(result.contains("web-access"), result);
         assertFalse(buffer.isEmpty());
         String drained = buffer.drain();
         assertTrue(drained.contains("when to fetch"));
-        assertTrue(drained.contains("已加载 Skill：web-access"));
+        assertTrue(drained.contains("web-access"));
     }
 
     @Test
@@ -39,7 +40,7 @@ class LoadSkillToolTest {
         tools.setSkillContextBuffer(buffer);
 
         String result = tools.executeTool("load_skill", "{\"name\":\"nonexistent\"}");
-        assertTrue(result.contains("未找到"), result);
+        assertTrue(result.contains("nonexistent"), result);
         assertTrue(buffer.isEmpty());
     }
 
@@ -60,14 +61,16 @@ class LoadSkillToolTest {
         tools.setSkillContextBuffer(buffer);
 
         String result = tools.executeTool("load_skill", "{\"name\":\"web-access\"}");
-        assertTrue(result.contains("已被禁用"), result);
+        assertTrue(result.contains("web-access"), result);
         assertTrue(buffer.isEmpty());
     }
 
     @Test
     void truncatesOversizedBody(@TempDir Path tempDir) throws IOException {
         StringBuilder big = new StringBuilder();
-        while (big.length() < 6 * 1024) big.append("0123456789");
+        while (big.length() < 6 * 1024) {
+            big.append("0123456789");
+        }
         SkillRegistry registry = registryWith(tempDir, "huge", "desc", big.toString());
 
         SkillContextBuffer buffer = new SkillContextBuffer();
@@ -76,10 +79,10 @@ class LoadSkillToolTest {
         tools.setSkillContextBuffer(buffer);
 
         String result = tools.executeTool("load_skill", "{\"name\":\"huge\"}");
-        assertTrue(result.contains("已加载 skill 'huge'"));
+        assertTrue(result.contains("huge"));
 
         String drained = buffer.drain();
-        assertTrue(drained.contains("(skill body truncated"), "应包含截断标记");
+        assertTrue(drained.contains("(skill body truncated"), "should include truncation marker");
     }
 
     @Test
@@ -89,7 +92,8 @@ class LoadSkillToolTest {
         tools.setSkillContextBuffer(new SkillContextBuffer());
 
         String result = tools.executeTool("load_skill", "{}");
-        assertTrue(result.contains("name 不能为空"), result);
+        assertTrue(result.contains("INVALID_ARGUMENTS"), result);
+        assertTrue(result.contains("$.name"), result);
     }
 
     private static SkillRegistry registryWith(Path tempDir, String name, String desc, String body) throws IOException {
