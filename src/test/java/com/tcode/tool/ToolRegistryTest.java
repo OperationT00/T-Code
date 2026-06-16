@@ -261,4 +261,18 @@ class ToolRegistryTest {
                 .anyMatch(tool -> tool.name().equals("echo_provider")));
         assertEquals("provider:hello", registry.executeTool("echo_provider", "{\"value\":\"hello\"}"));
     }
+
+    @Test
+    void recordsStructuredTraceForToolExecution() {
+        ToolRegistry registry = new ToolRegistry();
+
+        registry.executeToolOutput("list_dir", "{\"path\":\".\"}");
+
+        List<ToolTraceEvent> events = registry.recentToolTraceEvents();
+        assertFalse(events.isEmpty());
+        ToolTraceEvent event = events.get(events.size() - 1);
+        assertEquals("list_dir", event.toolName());
+        assertEquals(ToolCallStatus.SUCCEEDED, event.status());
+        assertEquals(ToolErrorCode.NONE, event.errorCode());
+    }
 }

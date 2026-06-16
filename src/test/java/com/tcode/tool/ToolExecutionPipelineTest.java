@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolExecutionPipelineTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -28,5 +29,41 @@ class ToolExecutionPipelineTest {
 
         assertEquals("echo:{\"value\":\"x\"}", output.text());
         assertEquals(AuditLog.OUTCOME_ALLOW, auditLog.readRecent(1).get(0).outcome());
+    }
+
+    @Test
+    void rejectsInvalidJsonBeforeExecutorRuns(@TempDir Path tempDir) {
+        ToolDefinitionCatalog tools = new ToolDefinitionCatalog();
+        AuditLog auditLog = new AuditLog(tempDir.resolve("audit"));
+        tools.registerProvider(context -> context.register(
+                "echo",
+                "Echo",
+                context.parameters(context.param("value", "string", "Value", true)),
+                args -> "should-not-run"));
+        ToolExecutionPipeline pipeline = new ToolExecutionPipeline(tools, new McpToolCatalog(), auditLog, () -> null);
+
+        ToolOutput output = pipeline.execute("echo", "{bad-json");
+
+        assertEquals(ToolCallStatus.FAILED, output.status());
+        assertEquals(ToolErrorCode.INVALID_ARGUMENTS, output.errorCode());
+        assertTrue(output.text().contains("INVALID_ARGUMENTS"));
+    }
+
+    @Test
+    void rejectsMissingRequiredArgumentBeforeExecutorRuns(@TempDir Path tempDir) {
+        ToolDefinitionCatalog tools = new ToolDefinitionCatalog();
+        AuditLog auditLog = new AuditLog(tempDir.resolve("audit"));
+        tools.registerProvider(context -> context.register(
+                "echo",
+                "Echo",
+                context.parameters(context.param("value", "string", "Value", true)),
+                args -> "should-not-run"));
+        ToolExecutionPipeline pipeline = new ToolExecutionPipeline(tools, new McpToolCatalog(), auditLog, () -> null);
+
+        ToolOutput output = pipeline.execute("echo", "{}");
+
+        assertEquals(ToolCallStatus.FAILED, output.status());
+        assertEquals(ToolErrorCode.INVALID_ARGUMENTS, output.errorCode());
+        assertTrue(output.text().contains("value"));
     }
 }
