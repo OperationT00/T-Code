@@ -43,4 +43,33 @@ class ToolBatchExecutorTest {
         assertEquals("two", results.get(1).id());
         assertEquals("done-second", results.get(1).result());
     }
+
+    @Test
+    void retriesRetryableFailuresOnce() {
+        AtomicInteger attempts = new AtomicInteger();
+        ToolBatchExecutor executor = new ToolBatchExecutor(5, 4);
+
+        List<ToolRegistry.ToolExecutionResult> results = executor.execute(List.of(
+                new ToolRegistry.ToolInvocation("one", "flaky", "{}")
+        ), invocation -> attempts.incrementAndGet() == 1
+                ? ToolOutput.failure("temporary network issue", ToolErrorCode.EXTERNAL_SERVICE_ERROR, true)
+                : ToolOutput.text("ok"));
+
+        assertEquals(2, attempts.get());
+        assertEquals("ok", results.get(0).result());
+        assertEquals(ToolCallStatus.SUCCEEDED, results.get(0).status());
+    }
+
+    @Test
+    void keepsStructuredFailureWhenRetryStillFails() {
+        ToolBatchExecutor executor = new ToolBatchExecutor(5, 4);
+
+        List<ToolRegistry.ToolExecutionResult> results = executor.execute(List.of(
+                new ToolRegistry.ToolInvocation("one", "flaky", "{}")
+        ), invocation -> ToolOutput.failure("temporary network issue", ToolErrorCode.EXTERNAL_SERVICE_ERROR, true));
+
+        assertEquals(ToolCallStatus.FAILED, results.get(0).status());
+        assertEquals(ToolErrorCode.EXTERNAL_SERVICE_ERROR, results.get(0).errorCode());
+        assertTrue(results.get(0).result().contains("EXTERNAL_SERVICE_ERROR"));
+    }
 }

@@ -16,6 +16,7 @@ import com.tcode.skill.SkillRegistry;
 
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -50,6 +51,7 @@ public class ToolRegistry {
     private final ShellService shellService;
     private final ToolBatchExecutor batchExecutor;
     private final ToolExecutionPipeline executionPipeline;
+    private final Deque<ToolTraceEvent> toolTraceEvents = new ConcurrentLinkedDeque<>();
 
     public ToolRegistry() {
         this(DEFAULT_COMMAND_TIMEOUT_SECONDS, DEFAULT_TOOL_BATCH_TIMEOUT_SECONDS);
@@ -268,8 +270,16 @@ public class ToolRegistry {
                                               java.util.function.Supplier<ToolOutput> execution) {
         notifyToolStarted(name, argumentsJson);
         ToolOutput output = execution.get();
+        recordToolTrace(name, argumentsJson, output);
         notifyToolCompleted(name, argumentsJson, output);
         return output;
+    }
+
+    private void recordToolTrace(String name, String argumentsJson, ToolOutput output) {
+        toolTraceEvents.addLast(ToolTraceEvent.of(name, argumentsJson, output, output == null ? 1 : output.attempts()));
+        while (toolTraceEvents.size() > 200) {
+            toolTraceEvents.pollFirst();
+        }
     }
 
     private void notifyToolStarted(String name, String argumentsJson) {
@@ -310,6 +320,10 @@ public class ToolRegistry {
         return auditLog;
     }
 
+    public List<ToolTraceEvent> recentToolTraceEvents() {
+        return List.copyOf(toolTraceEvents);
+    }
+
     /**
      * 并行执行同一轮 LLM 返回的多个工具调用。
      *
@@ -346,10 +360,21 @@ public class ToolRegistry {
                     invocation.id(),
                     invocation.name(),
                     invocation.argumentsJson(),
-                    output == null ? "" : output.text(),
+                    resultText(output),
                     elapsedMillis,
-                    false,
+                    output != null && output.status() == ToolCallStatus.TIMED_OUT,
                     output == null ? List.of() : output.imageParts());
+        }
+
+        private static String resultText(ToolOutput output) {
+            if (output == null) {
+                return "";
+            }
+            if (output.status() == ToolCallStatus.SUCCEEDED || output.errorCode() == ToolErrorCode.NONE) {
+                return output.text();
+            }
+            String prefix = output.errorCode().name() + ": ";
+            return output.text().startsWith(prefix) ? output.text() : prefix + output.text();
         }
 
         private static ToolExecutionResult completed(ToolInvocation invocation, String result, long elapsedMillis) {
@@ -358,6 +383,10 @@ public class ToolRegistry {
 
         static ToolExecutionResult failed(ToolInvocation invocation, String message) {
             return completed(invocation, "工具执行失败: " + message, 0);
+        }
+
+        static ToolExecutionResult cancelled(ToolInvocation invocation) {
+            return completed(invocation, "用户取消了此次工具调用", 0);
         }
 
         static ToolExecutionResult timedOut(ToolInvocation invocation, long timeoutSeconds) {
@@ -370,6 +399,58 @@ public class ToolRegistry {
                     true,
                     List.of()
             );
+        }
+
+        public ToolCallStatus status() {
+            if (timedOut) {
+                return ToolCallStatus.TIMED_OUT;
+            }
+            if (result != null && result.startsWith("用户取消")) {
+                return ToolCallStatus.CANCELLED;
+            }
+            if (result != null && (result.contains("失败") || result.contains("拒绝")
+                    || result.startsWith("INVALID_ARGUMENTS") || result.startsWith("UNKNOWN_TOOL")
+                    || result.startsWith("INTERNAL_ERROR") || result.startsWith("POLICY_DENIED")
+                    || result.startsWith("EXTERNAL_SERVICE_ERROR") || result.startsWith("MCP_SERVER_UNAVAILABLE"))) {
+                return ToolCallStatus.FAILED;
+            }
+            return ToolCallStatus.SUCCEEDED;
+        }
+
+        public ToolErrorCode errorCode() {
+            if (timedOut) {
+                return ToolErrorCode.TIMEOUT;
+            }
+            if (result != null && result.startsWith("INVALID_ARGUMENTS")) {
+                return ToolErrorCode.INVALID_ARGUMENTS;
+            }
+            if (result != null && result.startsWith("UNKNOWN_TOOL")) {
+                return ToolErrorCode.UNKNOWN_TOOL;
+            }
+            if (result != null && result.startsWith("POLICY_DENIED")) {
+                return ToolErrorCode.POLICY_DENIED;
+            }
+            if (result != null && result.startsWith("EXTERNAL_SERVICE_ERROR")) {
+                return ToolErrorCode.EXTERNAL_SERVICE_ERROR;
+            }
+            if (result != null && result.startsWith("MCP_SERVER_UNAVAILABLE")) {
+                return ToolErrorCode.MCP_SERVER_UNAVAILABLE;
+            }
+            if (result != null && result.startsWith("用户取消")) {
+                return ToolErrorCode.CANCELLED;
+            }
+            if (status() == ToolCallStatus.FAILED) {
+                return ToolErrorCode.INTERNAL_ERROR;
+            }
+            return ToolErrorCode.NONE;
+        }
+
+        public boolean retryable() {
+            return timedOut;
+        }
+
+        public int attempts() {
+            return 1;
         }
 
         public boolean hasImageParts() {

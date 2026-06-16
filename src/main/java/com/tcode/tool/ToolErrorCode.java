@@ -1,0 +1,14 @@
+package com.tcode.tool;
+
+public enum ToolErrorCode {
+    NONE,
+    UNKNOWN_TOOL,
+    INVALID_ARGUMENTS,
+    POLICY_DENIED,
+    HITL_REJECTED,
+    TIMEOUT,
+    EXTERNAL_SERVICE_ERROR,
+    MCP_SERVER_UNAVAILABLE,
+    CANCELLED,
+    INTERNAL_ERROR
+}

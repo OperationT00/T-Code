@@ -120,6 +120,11 @@ scheme 白名单(http/https) / 主机黑名单(localhost/loopback/link-local/sit
 
 ### Parallel Tool Execution
 
+- Tool calling 执行前会做轻量 JSON schema 参数校验；无效 JSON、缺必填和基础类型错误返回 `INVALID_ARGUMENTS`，不会进入真实 executor。
+- `ToolOutput` 携带 `ToolCallStatus` / `ToolErrorCode` / retryable / elapsedMillis / attempts；`executeTool()` 继续兼容纯文本返回。
+- `ToolBatchExecutor` 对 retryable 失败默认重试一次，仍保持并发执行和结果按输入顺序回收。
+- `ToolRegistry.recentToolTraceEvents()` 保留最近 200 条工具 trace，作为本地诊断和评测入口。
+
 - `executeTools()` 固定线程池并行，默认最多 4 个并发
 - 返回结果保持原始顺序
 - Agent/PlanExecuteAgent/SubAgent 三条路径都走 executeTools()
