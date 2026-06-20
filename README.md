@@ -1,15 +1,10 @@
 # t-code
 
-## PAE Resource Locks
+## PAE 资源锁
 
-When planner metadata is incomplete, file-write tasks infer conservative `file:<path>` locks from
-path-like task descriptions. If no concrete path is available, execution falls back to coarse locks such
-as `tool:file-write`.
+当 planner 元数据不完整时，写文件任务会根据任务描述中的路径信息保守推断 `file:<path>` 资源锁；如果无法提取具体路径，则回退到 `tool:file-write` 等粗粒度锁。
 
-PAE recovery is guarded by `PlanRecoveryBudget`: per-task retries, per-run replans, and total recovery
-actions are capped, exhausted recovery paths are recorded in `PlanRunTrace`, and replanned plans return
-to the review loop instead of recursively invoking plan execution. Recovery decisions include reasons,
-and recovery budget defaults can be tuned with `tcode.plan.recovery.*` system properties.
+PAE 恢复流程由 `PlanRecoveryBudget` 保护：单任务重试次数、单轮重规划次数和总恢复动作数都有上限；耗尽恢复路径会记录到 `PlanRunTrace`；重规划生成的新计划会返回审阅循环，而不是递归进入计划执行。恢复决策会携带原因，恢复预算默认值可通过 `tcode.plan.recovery.*` 系统属性调整。
 
 一个使用 Java 构建的 Agent Coding CLI。
 
